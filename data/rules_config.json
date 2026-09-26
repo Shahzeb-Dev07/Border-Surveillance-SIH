@@ -1,0 +1,21 @@
+{
+  "curfew": {
+    "start": "22:00",
+    "end": "05:30"
+  },
+  "intrusion": {
+    "dwell_time": 5,
+    "group_threshold": 3
+  },
+  "vehicle": {
+    "stationary_limit": 6
+  },
+  "alert": {
+    "ack_timeout": 30
+  },
+  "tuning": {
+    "min_bbox_height_px": 20,
+    "multi_frame_persistence": 3,
+    "cooldown_seconds": 25
+  }
+}

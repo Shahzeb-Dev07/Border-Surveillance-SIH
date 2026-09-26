@@ -1,0 +1,52 @@
+[
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-26T22:18:30.309Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "31def71f004c1538"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-26T22:17:25.418Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "13bcc9c2031f5fe8"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-26T22:17:00.900Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "b31c3b95b390ced2"
+  },
+  {
+    "user_id": "OP-SINGH-44",
+    "timestamp": "2026-09-26T21:57:00.975Z",
+    "action": "ACKNOWLEDGE",
+    "camera_id": "CAM-02",
+    "incident_id": "EVT-1790459803041-507",
+    "result": "SUCCESS",
+    "notes": "Vehicle identified, papers verified at gate barrier.",
+    "checksum": "7be0544acd57a3f5"
+  },
+  {
+    "user_id": "ADMIN-SYS-99",
+    "timestamp": "2026-09-26T21:56:17.693Z",
+    "action": "CONFIGURE_SOP_RULES",
+    "camera_id": "GLOBAL_SYSTEM",
+    "incident_id": "SYSTEM-RULE-CONFIG",
+    "result": "SUCCESS",
+    "notes": "Updated SOP thresholds (curfew, dwell time, group threshold, vehicle stationary limit).",
+    "checksum": "1fe820d3a6bc950c"
+  }
+]

@@ -1,0 +1,183 @@
+{
+  "CAM-01": [
+    {
+      "id": "ZONE-CAM01-01",
+      "name": "Perimeter Exclusion Wire",
+      "type": "polygon",
+      "rule": "VIRTUAL_FENCE",
+      "severity": "CRITICAL",
+      "color": "#ff3d71",
+      "points": [
+        {
+          "x": 0.15,
+          "y": 0.75
+        },
+        {
+          "x": 0.35,
+          "y": 0.52
+        },
+        {
+          "x": 0.78,
+          "y": 0.28
+        },
+        {
+          "x": 0.88,
+          "y": 0.38
+        },
+        {
+          "x": 0.42,
+          "y": 0.72
+        },
+        {
+          "x": 0.18,
+          "y": 0.88
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "ZONE-CAM01-02",
+      "name": "Patrol Track Loitering Zone",
+      "type": "polygon",
+      "rule": "DWELL_VIOLATION",
+      "dwellThresholdSec": 6,
+      "severity": "HIGH",
+      "color": "#ffaa00",
+      "points": [
+        {
+          "x": 0.48,
+          "y": 0.55
+        },
+        {
+          "x": 0.65,
+          "y": 0.4
+        },
+        {
+          "x": 0.78,
+          "y": 0.6
+        },
+        {
+          "x": 0.58,
+          "y": 0.82
+        }
+      ],
+      "enabled": true
+    }
+  ],
+  "CAM-02": [
+    {
+      "id": "ZONE-CAM02-01",
+      "name": "Boom Barrier Choke Point",
+      "type": "polygon",
+      "rule": "STATIONARY_VEHICLE",
+      "dwellThresholdSec": 5,
+      "severity": "HIGH",
+      "color": "#00e5ff",
+      "points": [
+        {
+          "x": 0.36,
+          "y": 0.5
+        },
+        {
+          "x": 0.58,
+          "y": 0.5
+        },
+        {
+          "x": 0.64,
+          "y": 0.7
+        },
+        {
+          "x": 0.32,
+          "y": 0.7
+        }
+      ],
+      "enabled": true
+    },
+    {
+      "id": "ZONE-CAM02-TRIPWIRE",
+      "name": "Checkpost Entry Tripwire",
+      "type": "tripwire",
+      "rule": "DIRECTIONAL_CROSSING",
+      "direction": "INBOUND",
+      "severity": "MEDIUM",
+      "color": "#00e676",
+      "points": [
+        {
+          "x": 0.25,
+          "y": 0.62
+        },
+        {
+          "x": 0.68,
+          "y": 0.62
+        }
+      ],
+      "enabled": true
+    }
+  ],
+  "CAM-03": [
+    {
+      "id": "ZONE-CAM03-01",
+      "name": "Night Zero-Line Sector 4",
+      "type": "polygon",
+      "rule": "VIRTUAL_FENCE",
+      "severity": "CRITICAL",
+      "color": "#ff3d71",
+      "points": [
+        {
+          "x": 0.08,
+          "y": 0.85
+        },
+        {
+          "x": 0.3,
+          "y": 0.48
+        },
+        {
+          "x": 0.7,
+          "y": 0.26
+        },
+        {
+          "x": 0.85,
+          "y": 0.32
+        },
+        {
+          "x": 0.4,
+          "y": 0.7
+        },
+        {
+          "x": 0.12,
+          "y": 0.95
+        }
+      ],
+      "enabled": true
+    }
+  ],
+  "CAM-04": [
+    {
+      "id": "ZONE-CAM04-01",
+      "name": "Ridge Road Curve Check",
+      "type": "polygon",
+      "rule": "VIRTUAL_FENCE",
+      "severity": "HIGH",
+      "color": "#ffaa00",
+      "points": [
+        {
+          "x": 0.52,
+          "y": 0.38
+        },
+        {
+          "x": 0.72,
+          "y": 0.38
+        },
+        {
+          "x": 0.82,
+          "y": 0.58
+        },
+        {
+          "x": 0.58,
+          "y": 0.58
+        }
+      ],
+      "enabled": true
+    }
+  ]
+}

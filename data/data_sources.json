@@ -1,0 +1,84 @@
+{
+  "datasets": [
+    {
+      "id": "visdrone",
+      "name": "VisDrone Benchmark Dataset",
+      "url": "https://github.com/VisDrone/VisDrone-Dataset",
+      "category": "High-Angle Surveillance & Drone Detection",
+      "targetClasses": ["person", "pedestrian", "car", "van", "truck", "bus"],
+      "relevanceToIBVAP": "Crucial benchmark for high-angle mast, watchtower, and pole-mounted CCTV angles typical of border outposts. Evaluates small-object detection under high-altitude oblique viewpoints where subjects appear small (20-40px)."
+    },
+    {
+      "id": "bdd100k",
+      "name": "BDD100K Diverse Driving Video Dataset",
+      "url": "https://github.com/bdd100k/bdd100k",
+      "category": "Multi-Weather & Night Surveillance",
+      "targetClasses": ["vehicle", "truck", "motorcycle", "person", "rider"],
+      "relevanceToIBVAP": "Evaluates vehicle detection and multi-object tracking across diverse adverse environmental conditions, including rain, dense fog, night glare, and dawn/dusk transitions representative of Himalayan and Terai border roads."
+    },
+    {
+      "id": "ufpr_alpr",
+      "name": "UFPR-ALPR License Plate Dataset",
+      "url": "https://web.inf.ufpr.br/vri/databases/ufpr-alpr/",
+      "category": "Choke-Point ANPR & Multi-Frame OCR",
+      "targetClasses": ["license_plate", "vehicle", "alphanumeric_characters"],
+      "relevanceToIBVAP": "Provides real-world multi-frame vehicle video tracks specifically recorded at barrier gates and inspection corridors. Validates multi-frame temporal consistency where single-frame OCR is error-prone."
+    },
+    {
+      "id": "osm",
+      "name": "OpenStreetMap Border Topography & GIS",
+      "url": "https://www.openstreetmap.org/#map=5/21.84/82.79",
+      "category": "Geospatial & Sector Mapping",
+      "targetClasses": ["border_pillars", "roads", "terrain", "outposts"],
+      "relevanceToIBVAP": "Supplies open geospatial coordinates for Border Outposts, transit check posts, access roads, and international boundary zero-line coordinates for tactical C2 GIS display."
+    }
+  ],
+  "operational_sop": {
+    "curfew": {
+      "start": "22:00",
+      "end": "05:30"
+    },
+    "intrusion": {
+      "dwell_time": 5,
+      "group_threshold": 3
+    },
+    "vehicle": {
+      "stationary_limit": 6
+    },
+    "alert": {
+      "ack_timeout": 30
+    }
+  },
+  "governance_prototype": {
+    "status": "PROTOTYPE POLICY BASELINE",
+    "disclaimer": "This policy is a proposed prototype baseline for system evaluation and is NOT an official BSF, SSB, or Ministry of Home Affairs (MHA) regulation.",
+    "rbac_roles": [
+      {
+        "role": "Operator",
+        "description": "Frontline monitoring personnel at BOP monitoring console.",
+        "permissions": ["VIEW_LIVE_FEEDS", "ACKNOWLEDGE_ALERTS", "ADD_INCIDENT_NOTES"]
+      },
+      {
+        "role": "Duty Officer",
+        "description": "Shift supervisor with tactical command authority.",
+        "permissions": ["VIEW_LIVE_FEEDS", "ACKNOWLEDGE_ALERTS", "DISPATCH_QRT", "ESCALATE_INCIDENT", "DISMISS_ALERT", "VIEW_AUDIT_LOG"]
+      },
+      {
+        "role": "Sector Commander",
+        "description": "Area commanding officer overseeing multiple BOPs in sector.",
+        "permissions": ["VIEW_LIVE_FEEDS", "DISPATCH_QRT", "OVERRIDE_VIRTUAL_FENCE", "EXPORT_FORENSIC_EVIDENCE", "VIEW_ALL_AUDIT_TRAILS", "GENERATE_SECTOR_REPORTS"]
+      },
+      {
+        "role": "System Administrator",
+        "description": "Technical administrator managing edge compute and telemetry.",
+        "permissions": ["CONFIGURE_SOP_RULES", "CALIBRATE_CAMERAS", "MANAGE_STREAMS", "CONFIGURE_RETENTION", "FULL_SYSTEM_CONTROL"]
+      }
+    ],
+    "proposed_retention_policy": {
+      "active_incident_evidence_days": 30,
+      "non_incident_stream_metadata_days": 7,
+      "tamper_evident_audit_log_days": 365,
+      "choke_point_biometric_crops": "Buffered locally; automatically purged upon incident disposition or 48 hours maximum."
+    }
+  }
+}

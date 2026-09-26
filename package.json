@@ -1,0 +1,28 @@
+{
+  "name": "ibvap-border-video-analytics",
+  "version": "2.6.0",
+  "description": "Intelligent Border Video Analytics Platform (SIH 2026, PS 26187) - Edge-First Hybrid AI Architecture for SSB",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js",
+    "test": "node tests/verify_system.js"
+  },
+  "keywords": [
+    "sih2026",
+    "border-security",
+    "ssb",
+    "video-analytics",
+    "edge-ai",
+    "virtual-fence",
+    "anti-flooding",
+    "bytetrack"
+  ],
+  "author": "IBVAP Engineering Team",
+  "license": "Apache-2.0",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^5.2.1",
+    "ws": "^8.22.0"
+  }
+}
