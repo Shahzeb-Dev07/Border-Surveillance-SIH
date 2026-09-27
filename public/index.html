@@ -63,6 +63,15 @@
         MUTE AUDIO
       </button>
 
+      <!-- Mobile Ad-Hoc Recon Stream Connect Modal Launcher -->
+      <button id="btnOpenMobileCamModal" class="btn-tactical btn-cyan" style="display:inline-flex;align-items:center;gap:6px" title="Connect Mobile Camera reconnaissance client (Smartphone)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+          <line x1="12" y1="18" x2="12.01" y2="18"/>
+        </svg>
+        + Mobile Cam
+      </button>
+
       <!-- Data Sources & Governance Buttons -->
       <button id="btnOpenDataSourcesModal" class="btn-tactical" title="View benchmarking datasets & SOP configuration">
         Data Sources & SOP
@@ -136,7 +145,7 @@
       <div class="viewport-header">
         <div class="feed-info">
           <div class="live-rec-badge">
-            <span class="live-rec-dot"></span> LIVE RTSP
+            <span class="live-rec-dot"></span> SIMULATED FEED
           </div>
           <div>
             <div class="feed-title" id="currentFeedTitle">CAM-01 — Perimeter Watchtower Alpha</div>
@@ -163,8 +172,8 @@
         <canvas id="videoCanvas"></canvas>
 
         <div class="canvas-crosshair-overlay">
-          <div>MODEL: YOLOv8-INT8 (TENSORRT)</div>
-          <div>TRACKER: BYTETRACK [ACTIVE MOT]</div>
+          <div>INFERENCE: SIMULATED (TARGET: YOLOv8 ONNX)</div>
+          <div>TRACKER: IoU MOT (BYTETRACK-INSPIRED)</div>
           <div>RULE ENGINE: DETERMINISTIC POLYS</div>
         </div>
 
@@ -553,7 +562,7 @@
           <h3 style="color:var(--accent-cyan);font-size:13px;margin-bottom:4px">1. Challenging Uniform CCTV Assumptions (Section 3 & 11)</h3>
           <p>
             Unlike naive proposals that claim "ANPR and Face Recognition everywhere", this architecture recognizes wide-angle perimeter CCTV is optically incapable of reliable face/plate recognition. 
-            ANPR and Face detection are implemented as <strong>strictly conditional capabilities</strong> active only at choke points (e.g. CAM-02 Barrier Gate) with multi-frame temporal confirmation.
+            ANPR and Face detection are architected as <strong>strictly conditional capabilities</strong> active only at choke points (e.g. CAM-02 Barrier Gate; simulated in this prototype to demonstrate conditional C2 gating and human verification workflows without bundling heavy OCR models).
           </p>
         </div>
 
@@ -565,9 +574,9 @@
         </div>
 
         <div style="background:rgba(255,255,255,0.03);padding:12px;border-radius:6px;border:1px solid var(--border-subtle)">
-          <h3 style="color:var(--accent-amber);font-size:13px;margin-bottom:4px">3. Edge-First Hybrid AI & WAN Loss Resilience (Section 6 & 8)</h3>
+          <h3 style="color:var(--accent-amber);font-size:13px;margin-bottom:4px">3. Edge-First Architecture & WAN Loss Resilience (Section 6 & 8)</h3>
           <p>
-            Remote BOPs experience WAN interruptions. All detection, tracking, virtual fence checks, and local alarms run locally on the edge node. When WAN disconnects (testable via the "Simulate WAN Loss" button), events buffer locally. Upon reconnection, an idempotent batch sync occurs with zero loss.
+            Remote BOPs experience WAN interruptions. In production, edge compute units (e.g. NVIDIA Jetson) run ONNX detection and tracking on-site; in this prototype, simulated detection feeds drive a lightweight pure-JS IoU tracker, deterministic rule engine, and local alarms on the local edge process. When WAN disconnects (testable via the "Simulate WAN Loss" button), events buffer locally. Upon reconnection, an idempotent batch sync occurs with zero loss.
           </p>
         </div>
 
@@ -584,7 +593,137 @@
     </div>
   </dialog>
 
+  <!-- 6. Mobile Camera Connection Dialog (<dialog>) -->
+  <dialog id="mobileCamDialog" style="max-width:640px">
+    <div class="modal-header">
+      <h2>MOBILE CAMERA CONNECTION</h2>
+      <button class="btn-close-modal" aria-label="Close dialog">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="modal-body" style="font-size:12px;line-height:1.6">
+      <!-- HTTPS Unavailable Warning Banner (shown only when httpsAvailable is false) -->
+      <div id="mobileCamHttpsWarning" style="display:none;background:rgba(255,61,113,0.15);border:1px solid var(--accent-red);border-left:4px solid var(--accent-red);padding:12px 14px;border-radius:6px;margin-bottom:14px;color:#fff">
+        <strong style="color:var(--accent-red);font-size:13px">⚠ HTTPS NOT CONFIGURED — CAMERA ACCESS RESTRICTED</strong>
+        <p style="font-size:11px;margin-top:4px;color:#cfd8dc">
+          Mobile browsers strictly enforce the W3C Secure Context policy: <code>getUserMedia</code> camera access is blocked over plain HTTP on LAN.
+        </p>
+        <p style="font-size:11px;margin-top:6px;color:#cfd8dc">
+          Please generate local SSL certificates on the laptop host:
+          <code style="display:block;background:rgba(0,0,0,0.5);padding:6px;margin-top:4px;color:var(--accent-cyan);font-family:var(--font-mono)">npm run setup-certs</code>
+          (or see README section 10 for mkcert trusted installation instructions).
+        </p>
+      </div>
+
+      <!-- Network Endpoint Details -->
+      <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:6px;padding:12px;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+          <span style="color:var(--text-muted);font-family:var(--font-mono)">Laptop LAN IP:</span>
+          <strong id="modalLanIp" style="color:var(--accent-cyan);font-family:var(--font-mono)">Loading...</strong>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--text-muted);font-family:var(--font-mono)">Secure Mobile URL:</span>
+          <span id="modalMobileUrl" style="color:var(--accent-green);font-family:var(--font-mono);font-size:11px;word-break:break-all">Loading...</span>
+        </div>
+      </div>
+
+      <!-- QR & Connection Container (hidden when HTTPS unavailable) -->
+      <div id="mobileCamConnectFlow">
+        <div style="display:flex;gap:18px;align-items:center;background:rgba(0,0,0,0.3);border:1px solid var(--border-subtle);border-radius:6px;padding:14px;margin-bottom:14px">
+          <!-- QR Code Canvas / Container -->
+          <div style="background:#fff;padding:8px;border-radius:6px;display:flex;align-items:center;justify-content:center;min-width:140px;min-height:140px">
+            <div id="mobileCamQrCode"></div>
+          </div>
+
+          <!-- Instructions -->
+          <div style="flex:1">
+            <h3 style="font-size:12px;color:var(--accent-cyan);margin-bottom:6px;font-family:var(--font-mono)">CONNECT YOUR PHONE CAMERA:</h3>
+            <ol style="margin-left:16px;font-size:11px;color:var(--text-main);line-height:1.6">
+              <li>Connect phone to the <strong>same Wi-Fi or mobile hotspot</strong> as this laptop.</li>
+              <li>Scan the QR code or open the <strong>Secure Mobile URL</strong> in your phone browser.</li>
+              <li>Accept certificate warning if prompted (tap <em>Advanced &gt; Proceed</em>).</li>
+              <li>Tap <strong>Allow</strong> when camera permission is requested.</li>
+              <li>Keep the phone page open — detection telemetry flows automatically to this C2 console.</li>
+            </ol>
+          </div>
+        </div>
+
+        <!-- Buttons Row -->
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+          <div style="display:flex;gap:10px;align-items:center">
+            <button id="btnCopyMobileUrl" class="btn-tactical btn-cyan" style="padding:7px 14px">
+              Copy Mobile URL
+            </button>
+            <span id="copyUrlFeedback" style="font-size:11px;color:var(--accent-green);display:none;font-family:var(--font-mono)">
+              ✔ Copied to clipboard!
+            </span>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px">
+            <button id="btnOpenMobilePreview" class="btn-tactical" style="padding:6px 12px;font-size:11px">
+              Open on this Device (Preview Only) ↗
+            </button>
+            <span style="font-size:10px;color:var(--text-muted);font-style:italic">
+              This does not connect a phone camera — open the Secure Mobile URL on your phone to do that.
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Mobile Cam Debug Panel (7 Fields reflecting Phase 1.2 State Machine) -->
+      <div style="background:rgba(6,12,22,0.92);border:1px solid var(--border-highlight);border-radius:6px;padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:6px">
+          <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent-cyan)">LIVE RECON DEBUG PANEL // STATE MACHINE</span>
+          <span id="modalLiveStateBadge" style="display:inline-flex;align-items:center;gap:6px;font-family:var(--font-mono);font-size:11px;font-weight:700">
+            <span class="dot amber" id="modalStatusDot"></span>
+            <span id="modalStatusStateText">WAITING</span>
+          </span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;font-family:var(--font-mono);font-size:10px">
+          <div>
+            <span style="color:var(--text-muted)">QR:</span><br>
+            <strong id="debugFieldQr" style="color:var(--accent-green);font-size:11px">READY</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted)">PHONE:</span><br>
+            <strong id="debugFieldPhone" style="color:var(--accent-amber);font-size:11px">WAITING</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted)">WEBSOCKET:</span><br>
+            <strong id="debugFieldWs" style="color:var(--accent-amber);font-size:11px">WAITING</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted)">CAMERA ID:</span><br>
+            <strong id="debugFieldCamId" style="color:var(--accent-cyan);font-size:11px">CAM-MOBILE-01</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted)">LAST DETECTION:</span><br>
+            <strong id="debugFieldLastDetect" style="color:var(--text-dim);font-size:11px">--</strong>
+          </div>
+          <div>
+            <span style="color:var(--text-muted)">PERSONS:</span><br>
+            <strong id="debugFieldPersons" style="color:var(--text-dim);font-size:11px">--</strong>
+          </div>
+          <div style="grid-column: span 2">
+            <span style="color:var(--text-muted)">CONFIDENCE:</span><br>
+            <strong id="debugFieldConfidence" style="color:var(--text-dim);font-size:11px">--</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-tactical btn-close-modal">Close</button>
+    </div>
+  </dialog>
+
   <!-- Scripts -->
+  <script src="/js/qrcode.min.js"></script>
   <script src="/js/audioAlert.js"></script>
   <script src="/js/gisMap.js"></script>
   <script src="/js/canvasRenderer.js"></script>

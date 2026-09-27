@@ -65,13 +65,15 @@ class CanvasRenderer {
     const img = this.cameraImages.get(this.currentCamera.id);
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, 0, 0, w, h);
+    } else if (this.currentCamera.id === 'CAM-MOBILE-01') {
+      this._renderMobileFeedBackdrop(ctx, w, h);
     } else {
       // Standby noise/placeholder
       ctx.fillStyle = '#0b1118';
       ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = '#455a64';
       ctx.font = '14px "JetBrains Mono", monospace';
-      ctx.fillText('CONNECTING TO RTSP STREAM...', w / 2 - 110, h / 2);
+      ctx.fillText('CONNECTING TO CAMERA FEED...', w / 2 - 110, h / 2);
     }
 
     // Apply Night / IR Contrast Enhancer Filter if active
@@ -265,16 +267,103 @@ class CanvasRenderer {
       ctx.fillText(labelText, bx + 4, by - 6);
 
       // 4. Dwell Time / Speed HUD (Over target)
+      let bottomOffset = 4;
       if (obj.dwellSec > 1) {
         const dwellText = `DWELL: ${obj.dwellSec.toFixed(1)}s`;
         ctx.font = '9px "JetBrains Mono", monospace';
         const dWidth = ctx.measureText(dwellText).width;
 
         ctx.fillStyle = isSuspect ? 'rgba(255, 61, 113, 0.85)' : 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(bx, by + bh + 4, dWidth + 6, 14);
+        ctx.fillRect(bx, by + bh + bottomOffset, dWidth + 6, 14);
 
         ctx.fillStyle = '#fff';
-        ctx.fillText(dwellText, bx + 3, by + bh + 14);
+        ctx.fillText(dwellText, bx + 3, by + bh + bottomOffset + 10);
+        bottomOffset += 18;
+      }
+
+      // 5. Tactical Movement Vector & Direction Badge (Image-space only)
+      if (obj.movement) {
+        const dir = obj.movement.direction || 'STATIONARY';
+        const speedText = typeof obj.movement.speedEstimate === 'number' ? ` | ${obj.movement.speedEstimate.toFixed(2)} norm/s` : '';
+        const moveLabel = `DIR: ${dir}${speedText}`;
+        ctx.font = '9px "JetBrains Mono", monospace';
+        const mWidth = ctx.measureText(moveLabel).width;
+
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillRect(bx, by + bh + bottomOffset, mWidth + 6, 14);
+
+        ctx.fillStyle = dir !== 'STATIONARY' ? '#ffb300' : '#00e5ff';
+        ctx.fillText(moveLabel, bx + 3, by + bh + bottomOffset + 10);
+
+        // Draw movement vector arrow from bbox centroid
+        if (dir !== 'STATIONARY' && obj.movement.delta) {
+          const cx = bx + bw / 2;
+          const cy = by + bh / 2;
+          const arrowLen = 28;
+          const dist = Math.hypot(obj.movement.delta.x, obj.movement.delta.y) || 0.001;
+          const ndx = (obj.movement.delta.x / dist) * arrowLen;
+          const ndy = (obj.movement.delta.y / dist) * arrowLen;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(cx + ndx, cy + ndy);
+          ctx.strokeStyle = '#ffb300';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          const angle = Math.atan2(ndy, ndx);
+          ctx.beginPath();
+          ctx.moveTo(cx + ndx, cy + ndy);
+          ctx.lineTo(cx + ndx - 7 * Math.cos(angle - Math.PI / 6), cy + ndy - 7 * Math.sin(angle - Math.PI / 6));
+          ctx.lineTo(cx + ndx - 7 * Math.cos(angle + Math.PI / 6), cy + ndy - 7 * Math.sin(angle + Math.PI / 6));
+          ctx.closePath();
+          ctx.fillStyle = '#ffb300';
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // 6. MoveNet Pose Skeleton Overlay (if pose keypoints attached)
+      if (obj.pose && Array.isArray(obj.pose.keypoints)) {
+        const kpMap = {};
+        for (const kp of obj.pose.keypoints) {
+          if (kp.confidence >= 0.3) {
+            kpMap[kp.name] = { x: kp.x * w, y: kp.y * h };
+          }
+        }
+        const pairs = [
+          ['left_shoulder', 'right_shoulder'],
+          ['left_shoulder', 'left_elbow'],
+          ['left_elbow', 'left_wrist'],
+          ['right_shoulder', 'right_elbow'],
+          ['right_elbow', 'right_wrist'],
+          ['left_shoulder', 'left_hip'],
+          ['right_shoulder', 'right_hip'],
+          ['left_hip', 'right_hip'],
+          ['left_hip', 'left_knee'],
+          ['left_knee', 'left_ankle'],
+          ['right_hip', 'right_knee'],
+          ['right_knee', 'right_ankle']
+        ];
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0, 230, 118, 0.7)';
+        ctx.lineWidth = 1.5;
+        for (const [p1, p2] of pairs) {
+          if (kpMap[p1] && kpMap[p2]) {
+            ctx.beginPath();
+            ctx.moveTo(kpMap[p1].x, kpMap[p1].y);
+            ctx.lineTo(kpMap[p2].x, kpMap[p2].y);
+            ctx.stroke();
+          }
+        }
+        ctx.fillStyle = '#00e5ff';
+        for (const k in kpMap) {
+          ctx.beginPath();
+          ctx.arc(kpMap[k].x, kpMap[k].y, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
       }
       ctx.restore();
     }
@@ -330,6 +419,98 @@ class CanvasRenderer {
         ctx.restore();
       }
     }
+  }
+
+  _renderMobileFeedBackdrop(ctx, w, h) {
+    // Dark tactical background with high-tech grid
+    ctx.fillStyle = '#03070d';
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle perspective grid
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.05)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 36) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y < h; y += 36) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // Concentric range rings in center
+    const cx = w / 2;
+    const cy = h / 2;
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.12)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 60, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 120, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Corner targeting brackets
+    const bSize = 30;
+    const pad = 24;
+    ctx.strokeStyle = 'rgba(0, 229, 255, 0.4)';
+    ctx.lineWidth = 2;
+    // Top-left
+    ctx.beginPath(); ctx.moveTo(pad, pad + bSize); ctx.lineTo(pad, pad); ctx.lineTo(pad + bSize, pad); ctx.stroke();
+    // Top-right
+    ctx.beginPath(); ctx.moveTo(w - pad - bSize, pad); ctx.lineTo(w - pad, pad); ctx.lineTo(w - pad, pad + bSize); ctx.stroke();
+    // Bottom-left
+    ctx.beginPath(); ctx.moveTo(pad, h - pad - bSize); ctx.lineTo(pad, h - pad); ctx.lineTo(pad + bSize, h - pad); ctx.stroke();
+    // Bottom-right
+    ctx.beginPath(); ctx.moveTo(w - pad - bSize, h - pad); ctx.lineTo(w - pad, h - pad); ctx.lineTo(w - pad, h - pad - bSize); ctx.stroke();
+
+    // Tactical Status Text
+    const status = this.currentCamera.status;
+    const isOnline = status === 'ONLINE';
+    const isStale = status === 'STALE';
+    const isOffline = status === 'OFFLINE';
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px "JetBrains Mono", monospace';
+    if (isOnline) {
+      ctx.fillStyle = '#00e676';
+      ctx.fillText('● MOBILE RECON UPLINK: STREAMING METADATA AT 8 Hz', cx, cy - 32);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#00e5ff';
+      const poseActive = this.meta?.mobileTelemetry?.poseEngineActive;
+      ctx.fillText(`MODEL: TF.js COCO-SSD + MOVENET LIGHTNING [${poseActive ? 'POSE ACTIVE' : 'COCO-SSD ONLY'}]`, cx, cy - 10);
+      ctx.fillStyle = '#90a4ae';
+      ctx.fillText('EDGE-FIRST DESIGN: METADATA ONLY // ZERO RAW VIDEO SENT OVER WAN', cx, cy + 12);
+      ctx.fillStyle = '#78909c';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText('* IMAGE-SPACE MEASUREMENTS ONLY (UNITS: PX & NORM/S) - UNCALIBRATED *', cx, cy + 32);
+    } else if (isStale) {
+      ctx.fillStyle = '#ff7043';
+      ctx.fillText('⚠ CAM-MOBILE-01 // FEED STALE: NO DETECTIONS IN >3s', cx, cy - 30);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#cfd8dc';
+      ctx.fillText('DISPLAY FROZEN (LAST SEEN PERSISTED) // WAITING FOR PACKETS', cx, cy - 8);
+      ctx.fillStyle = '#78909c';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillText('* IMAGE-SPACE MEASUREMENTS ONLY (UNITS: PX & NORM/S) - UNCALIBRATED *', cx, cy + 14);
+    } else if (isOffline) {
+      ctx.fillStyle = '#90a4ae';
+      ctx.fillText('✖ CAM-MOBILE-01 // OFFLINE: PHONE DISCONNECTED', cx, cy - 30);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#78909c';
+      ctx.fillText('RECONNECT PHONE AT HTTPS://<LAN-IP>:3443/mobile-cam', cx, cy - 8);
+      ctx.fillText('OR REOPEN MOBILE BROWSER TAB TO RESUME STREAM', cx, cy + 14);
+    } else {
+      ctx.fillStyle = '#ffaa00';
+      ctx.fillText('◌ CAM-MOBILE-01 // STANDBY: AWAITING SMARTPHONE FEED', cx, cy - 30);
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#78909c';
+      ctx.fillText('OPEN HTTPS://<LAN-IP>:3443/mobile-cam ON SMARTPHONE', cx, cy - 8);
+      ctx.fillText('OR CLICK "+ MOBILE CAM" IN TOP HEADER TO CONNECT', cx, cy + 14);
+    }
+    ctx.restore();
   }
 
   _renderCctvWatermark(ctx, w, h) {

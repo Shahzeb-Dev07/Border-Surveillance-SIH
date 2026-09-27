@@ -151,4 +151,28 @@ router.post('/rules/config', (req, res) => {
   });
 });
 
+// 8. Mobile Camera Ingestion Info
+router.get('/mobile-cam-info', (req, res) => {
+  const fs = require('fs');
+  const path = require('path');
+  const { getLocalIp } = require('../utils/network');
+
+  const lanIp = getLocalIp();
+  const httpPort = process.env.PORT || 3000;
+  const httpsPort = process.env.HTTPS_PORT || 3443;
+
+  const keyPath = path.join(__dirname, '..', '..', 'certs', 'key.pem');
+  const certPath = path.join(__dirname, '..', '..', 'certs', 'cert.pem');
+  const httpsAvailable = fs.existsSync(keyPath) && fs.existsSync(certPath) &&
+    fs.statSync(keyPath).size > 0 && fs.statSync(certPath).size > 0;
+
+  res.json({
+    lanIp,
+    httpUrl: `http://${lanIp}:${httpPort}`,
+    httpsUrl: `https://${lanIp}:${httpsPort}`,
+    mobileUrl: `https://${lanIp}:${httpsPort}/mobile-cam`,
+    httpsAvailable
+  });
+});
+
 module.exports = router;

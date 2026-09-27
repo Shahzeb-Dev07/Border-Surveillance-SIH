@@ -1,0 +1,1319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>IBVAP // Mobile Recon Cam (CAM-MOBILE-01)</title>
+  <style>
+    :root {
+      --bg: #020408;
+      --card-bg: rgba(6, 12, 22, 0.92);
+      --card-border: rgba(0, 229, 255, 0.28);
+      --cyan: #00e5ff;
+      --green: #00e676;
+      --red: #ff3d71;
+      --amber: #ffaa00;
+      --text: #e0e6ed;
+      --text-muted: #78909c;
+      --text-dim: #546e7a;
+      --font-mono: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      position: fixed;
+    }
+
+    .app-viewport {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+
+    /* Fullscreen Video Viewfinder */
+    .camera-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    video#cameraVideo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    canvas#detectionCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* Top Banner / Error Display */
+    .hud-top {
+      position: relative;
+      z-index: 10;
+      padding: 10px 12px 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .error-banner {
+      background: rgba(255, 61, 113, 0.95);
+      border: 1px solid #ff3d71;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.4;
+      box-shadow: 0 4px 16px rgba(255, 61, 113, 0.5);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .error-banner.hidden {
+      display: none;
+    }
+
+    .error-icon {
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .top-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      padding: 6px 10px;
+      border-radius: 6px;
+      backdrop-filter: blur(10px);
+    }
+
+    .header-id {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--cyan);
+      letter-spacing: 0.5px;
+    }
+
+    .header-tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--green);
+      background: rgba(0, 230, 118, 0.15);
+      border: 1px solid rgba(0, 230, 118, 0.4);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* Tactical Reticle */
+    .tactical-reticle {
+      position: absolute;
+      top: 35%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 100px;
+      height: 100px;
+      border: 1px dashed rgba(0, 229, 255, 0.25);
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .tactical-reticle::before, .tactical-reticle::after {
+      content: '';
+      position: absolute;
+      background: rgba(0, 229, 255, 0.4);
+    }
+    .tactical-reticle::before { top: 50%; left: 0; right: 0; height: 1px; }
+    .tactical-reticle::after { left: 50%; top: 0; bottom: 0; width: 1px; }
+
+    /* Bottom HUD Panel */
+    .hud-bottom {
+      position: relative;
+      z-index: 10;
+      padding: 6px 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+
+    .status-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      row-gap: 5px;
+      column-gap: 10px;
+      font-size: 10px;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 2px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .status-label {
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .status-val {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot.green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .dot.red { background: var(--red); box-shadow: 0 0 5px var(--red); }
+    .dot.amber { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+    .dot.dim { background: var(--text-dim); }
+
+    /* Control Toolbar */
+    .action-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+
+    .btn-ctrl {
+      padding: 7px 4px;
+      background: rgba(0, 229, 255, 0.12);
+      border: 1px solid rgba(0, 229, 255, 0.4);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 4px;
+      backdrop-filter: blur(6px);
+      touch-action: manipulation;
+    }
+    .btn-ctrl:active {
+      background: rgba(0, 229, 255, 0.3);
+      transform: scale(0.98);
+    }
+    .btn-ctrl.off {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.15);
+      color: var(--text-muted);
+    }
+    .btn-ctrl.warn {
+      background: rgba(255, 170, 0, 0.15);
+      border-color: rgba(255, 170, 0, 0.5);
+      color: var(--amber);
+    }
+    .btn-ctrl.danger {
+      background: rgba(255, 61, 113, 0.15);
+      border-color: rgba(255, 61, 113, 0.5);
+      color: var(--red);
+    }
+
+    /* Per-Person Live Telemetry List */
+    .telemetry-tray {
+      background: rgba(3, 7, 14, 0.95);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      max-height: 130px;
+      overflow-y: auto;
+    }
+
+    .telemetry-tray-header {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-dim);
+      font-size: 9px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 4px;
+    }
+
+    .person-card {
+      background: rgba(255, 255, 255, 0.03);
+      border-left: 2px solid var(--cyan);
+      padding: 4px 6px;
+      margin-bottom: 4px;
+      border-radius: 0 4px 4px 0;
+    }
+    .person-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2px;
+    }
+    .person-id-tag {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+    .person-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+    .person-metrics strong {
+      color: var(--text);
+    }
+
+    /* Image-space disclaimer */
+    .disclaimer-bar {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--amber);
+      text-align: center;
+      background: rgba(255, 170, 0, 0.08);
+      border: 1px solid rgba(255, 170, 0, 0.25);
+      border-radius: 4px;
+      padding: 3px 6px;
+    }
+
+    /* Small Host/Uplink Debug Bar */
+    .debug-row {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      text-align: center;
+      padding: 2px 4px;
+      word-break: break-all;
+    }
+    .debug-row span {
+      color: var(--cyan);
+    }
+  </style>
+
+  <!-- Pinned versions of TensorFlow.js, COCO-SSD, and MoveNet Pose-Detection -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3"></script>
+</head>
+<body>
+
+  <div class="app-viewport">
+    <!-- Camera Viewfinder & Tactical Overlay Canvas -->
+    <div class="camera-container">
+      <video id="cameraVideo" autoplay playsinline muted></video>
+      <canvas id="detectionCanvas"></canvas>
+    </div>
+
+    <!-- Center Reticle -->
+    <div class="tactical-reticle"></div>
+
+    <!-- Top HUD & Error Banner -->
+    <div class="hud-top">
+      <div id="errorBanner" class="error-banner hidden">
+        <span class="error-icon">⚠</span>
+        <span id="errorMessage">Error</span>
+      </div>
+
+      <div class="top-header-row">
+        <div>
+          <span class="header-id">CAM-MOBILE-01</span>
+          <span style="font-size:9px;color:var(--text-muted);margin-left:6px;">TACTICAL RECON</span>
+        </div>
+        <div class="header-tag" id="aiPipelineBadge">COCO-SSD + MOVENET</div>
+      </div>
+    </div>
+
+    <!-- Bottom HUD Status Rows & Controls -->
+    <div class="hud-bottom">
+      <!-- Status Indicators Panel -->
+      <div class="status-panel">
+        <div class="status-grid">
+          <div class="status-item">
+            <span class="status-label">AI ENGINE:</span>
+            <span class="status-val" id="statAiModel">
+              <span class="dot amber"></span>
+              <span>Loading...</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">POSE ENGINE:</span>
+            <span class="status-val" id="statPoseModel">
+              <span class="dot amber"></span>
+              <span>Initializing...</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">Camera Feed</span>
+            <span class="status-val" id="statCamFeed">
+              <span class="dot red"></span>
+              <span>Stopped</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">Persons Detected</span>
+            <span class="status-val" style="color:var(--cyan)" id="statPersonCount">0</span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">IBVAP Server</span>
+            <span class="status-val" id="statServer">
+              <span class="dot amber"></span>
+              <span>Connecting...</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">Cadence / Time</span>
+            <span class="status-val" style="color:var(--green)" id="statCadence">175ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls Row -->
+      <div class="action-row">
+        <button class="btn-ctrl" id="btnToggleCamera" type="button" title="Start or stop camera sensor">
+          Stop Cam
+        </button>
+        <button class="btn-ctrl" id="btnSwitchCam" type="button" title="Switch between environment and user camera">
+          Flip Cam
+        </button>
+        <button class="btn-ctrl" id="btnTogglePose" type="button" title="Toggle MoveNet pose estimation on/off">
+          Pose: ON
+        </button>
+        <button class="btn-ctrl" id="btnToggleOverlay" type="button" title="Toggle tactical skeleton overlay">
+          HUD: ON
+        </button>
+      </div>
+
+      <!-- Per-Person Live Telemetry Tray -->
+      <div class="telemetry-tray">
+        <div class="telemetry-tray-header">
+          <span>PER-PERSON MOVEMENT & MEASUREMENT TELEMETRY</span>
+          <span id="telemetryTrayCount">0 TRACKED</span>
+        </div>
+        <div id="personsTelemetryList">
+          <div style="text-align:center;padding:12px;color:var(--text-dim)">
+            NO PERSONS IN FRAME — SENSOR IDLE
+          </div>
+        </div>
+      </div>
+
+      <!-- Image-space disclaimer -->
+      <div class="disclaimer-bar">
+        Image-space relative measurements only. Uncalibrated (normalized / px).
+      </div>
+
+      <!-- Small Host/Uplink Debug Bar -->
+      <div class="debug-row">
+        Host: <span id="debugHost">--</span> &nbsp;|&nbsp; Uplink: <span id="debugWsUrl">--</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // DOM Elements
+      const video = document.getElementById('cameraVideo');
+      const canvas = document.getElementById('detectionCanvas');
+      const ctx = canvas.getContext('2d');
+      const errorBanner = document.getElementById('errorBanner');
+      const errorMessage = document.getElementById('errorMessage');
+
+      const statAiModel = document.getElementById('statAiModel');
+      const statPoseModel = document.getElementById('statPoseModel');
+      const statCamFeed = document.getElementById('statCamFeed');
+      const statPersonCount = document.getElementById('statPersonCount');
+      const statServer = document.getElementById('statServer');
+      const statCadence = document.getElementById('statCadence');
+      const aiPipelineBadge = document.getElementById('aiPipelineBadge');
+
+      const btnToggleCamera = document.getElementById('btnToggleCamera');
+      const btnSwitchCam = document.getElementById('btnSwitchCam');
+      const btnTogglePose = document.getElementById('btnTogglePose');
+      const btnToggleOverlay = document.getElementById('btnToggleOverlay');
+
+      const personsTelemetryList = document.getElementById('personsTelemetryList');
+      const telemetryTrayCount = document.getElementById('telemetryTrayCount');
+      const debugHost = document.getElementById('debugHost');
+      const debugWsUrl = document.getElementById('debugWsUrl');
+
+      // State
+      let cocoModel = null;
+      let cocoReady = false;
+      let poseDetector = null;
+      let poseReady = false;
+      let poseAvailable = true;
+      let poseEnabled = true;       // UI toggle, default ON
+      let overlayEnabled = true;    // UI toggle, default ON
+      let isStreaming = false;
+      let videoReady = false;
+      let currentStream = null;
+      let currentFacing = 'environment';
+      let ws = null;
+      let reconnectTimer = null;
+      let reconnectDelay = 2000;
+
+      // Local client-side tracking state (grouping label only; server assigns persistent trackId)
+      let localTracks = new Map(); // localId -> trackState
+      let nextLocalNum = 1;
+
+      // Performance Budget & Adaptive Interval
+      let currentInterval = 175; // ms
+      let slowCycles = 0;
+      let fastCycles = 0;
+
+      // Populate debug display
+      debugHost.textContent = location.host;
+
+      // Skeleton bone connection pairs for MoveNet 17-keypoint model
+      const SKELETON_PAIRS = [
+        ['left_shoulder', 'right_shoulder'],
+        ['left_shoulder', 'left_elbow'],
+        ['left_elbow', 'left_wrist'],
+        ['right_shoulder', 'right_elbow'],
+        ['right_elbow', 'right_wrist'],
+        ['left_shoulder', 'left_hip'],
+        ['right_shoulder', 'right_hip'],
+        ['left_hip', 'right_hip'],
+        ['left_hip', 'left_knee'],
+        ['left_knee', 'left_ankle'],
+        ['right_hip', 'right_knee'],
+        ['right_knee', 'right_ankle']
+      ];
+
+      function showError(msg) {
+        errorMessage.textContent = msg;
+        errorBanner.classList.remove('hidden');
+      }
+
+      function clearError() {
+        errorMessage.textContent = '';
+        errorBanner.classList.add('hidden');
+      }
+
+      function setStatus(el, state, text) {
+        let dotClass = 'amber';
+        if (state === 'ok') dotClass = 'green';
+        if (state === 'error') dotClass = 'red';
+        if (state === 'dim') dotClass = 'dim';
+        el.innerHTML = `<span class="dot ${dotClass}"></span> <span>${text}</span>`;
+      }
+
+      function updatePoseStatusUI() {
+        if (!poseAvailable) {
+          setStatus(statPoseModel, 'error', '● UNAVAILABLE');
+          btnTogglePose.classList.add('danger');
+          btnTogglePose.textContent = 'Pose: N/A';
+          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD ONLY';
+        } else if (!poseEnabled) {
+          setStatus(statPoseModel, 'dim', '○ DISABLED');
+          btnTogglePose.classList.add('off');
+          btnTogglePose.textContent = 'Pose: OFF';
+          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD (POSE OFF)';
+        } else if (poseReady) {
+          setStatus(statPoseModel, 'ok', '● MOVENET READY');
+          btnTogglePose.classList.remove('off', 'danger');
+          btnTogglePose.textContent = 'Pose: ON';
+          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD + MOVENET';
+        } else {
+          setStatus(statPoseModel, 'warn', 'Loading...');
+          btnTogglePose.textContent = 'Pose: LOAD';
+        }
+      }
+
+      function mapCameraError(err) {
+        if (!err) return 'Unknown camera error';
+        if (err.name === 'NotAllowedError') return 'Camera permission denied. Allow camera access in browser site settings and reload.';
+        if (err.name === 'NotFoundError') return 'No camera found on this device.';
+        if (err.name === 'NotReadableError') return 'Camera is in use by another app or a hardware error occurred.';
+        if (err.name === 'OverconstrainedError') return "Requested camera resolution/facing unsupported.";
+        if (err.name === 'SecurityError') return 'Camera blocked: insecure context. Open HTTPS URL.';
+        return `${err.name}: ${err.message}`;
+      }
+
+      // 1. Camera Initialization via getUserMedia
+      async function startCamera(facing) {
+        clearError();
+        videoReady = false;
+        setStatus(statCamFeed, 'warn', 'Starting...');
+
+        if (!window.isSecureContext) {
+          const httpsHost = location.hostname || '10.159.203.55';
+          const err = `CAMERA ACCESS BLOCKED — this page is not a secure context. Open https://${httpsHost}:3443/mobile-cam instead of the http:// URL.`;
+          setStatus(statCamFeed, 'error', 'Stopped');
+          showError(err);
+          console.error('[MOBILE-CAM] Insecure context:', err);
+          return;
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          const err = 'Fatal: Camera API (getUserMedia) not supported in this browser or context.';
+          setStatus(statCamFeed, 'error', 'Stopped');
+          showError(err);
+          console.error('[MOBILE-CAM] No getUserMedia:', err);
+          return;
+        }
+
+        console.log('[MOBILE-CAM] Requesting camera permission');
+
+        if (currentStream) {
+          currentStream.getTracks().forEach(t => t.stop());
+          currentStream = null;
+        }
+
+        try {
+          const constraints = {
+            video: {
+              facingMode: { ideal: facing },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          };
+
+          currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+          console.log('[MOBILE-CAM] Camera permission granted');
+
+          video.srcObject = currentStream;
+          await video.play();
+
+          console.log('[MOBILE-CAM] Video started');
+          videoReady = true;
+          isStreaming = true;
+          btnToggleCamera.textContent = 'Stop Cam';
+          btnToggleCamera.classList.remove('warn');
+          setStatus(statCamFeed, 'ok', `Active (${video.videoWidth || '720p'})`);
+        } catch (err) {
+          videoReady = false;
+          isStreaming = false;
+          btnToggleCamera.textContent = 'Start Cam';
+          btnToggleCamera.classList.add('warn');
+          setStatus(statCamFeed, 'error', 'Stopped');
+          const mapped = mapCameraError(err);
+          showError(mapped);
+          console.error('[MOBILE-CAM] Camera error:', mapped);
+        }
+      }
+
+      function stopCamera() {
+        if (currentStream) {
+          currentStream.getTracks().forEach(t => t.stop());
+          currentStream = null;
+        }
+        video.srcObject = null;
+        videoReady = false;
+        isStreaming = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        btnToggleCamera.textContent = 'Start Cam';
+        btnToggleCamera.classList.add('warn');
+        setStatus(statCamFeed, 'error', 'Stopped');
+        console.log('[MOBILE-CAM] Camera stopped by operator');
+      }
+
+      // Camera Controls
+      btnToggleCamera.addEventListener('click', () => {
+        if (isStreaming) {
+          stopCamera();
+        } else {
+          startCamera(currentFacing);
+        }
+      });
+
+      btnSwitchCam.addEventListener('click', async () => {
+        currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
+        await startCamera(currentFacing);
+      });
+
+      btnTogglePose.addEventListener('click', () => {
+        if (!poseAvailable) return;
+        poseEnabled = !poseEnabled;
+        updatePoseStatusUI();
+      });
+
+      btnToggleOverlay.addEventListener('click', () => {
+        overlayEnabled = !overlayEnabled;
+        if (overlayEnabled) {
+          btnToggleOverlay.classList.remove('off');
+          btnToggleOverlay.textContent = 'HUD: ON';
+        } else {
+          btnToggleOverlay.classList.add('off');
+          btnToggleOverlay.textContent = 'HUD: OFF';
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+      });
+
+      let heartbeatTimer = null;
+
+      function sendHeartbeat() {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'MOBILE_HEARTBEAT',
+            cameraId: 'CAM-MOBILE-01',
+            timestamp: Date.now()
+          }));
+        }
+      }
+
+      // 2. WebSocket Connection (Derived from location origin)
+      function connectWebSocket() {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        const protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${location.host}`;
+        debugWsUrl.textContent = wsUrl;
+
+        console.log('[MOBILE-CAM] Connecting WebSocket to ' + wsUrl);
+        setStatus(statServer, 'warn', 'Connecting...');
+
+        try {
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            console.log('[MOBILE-CAM] WebSocket connected');
+            setStatus(statServer, 'ok', 'Connected');
+            reconnectDelay = 2000;
+
+            // Phase 1.1: Identify mobile camera on WebSocket open
+            const handshake = {
+              type: 'MOBILE_CAMERA_CONNECT',
+              cameraId: 'CAM-MOBILE-01',
+              device: 'mobile'
+            };
+            ws.send(JSON.stringify(handshake));
+            console.log('[MOBILE-CAM] Sent MOBILE_CAMERA_CONNECT handshake');
+
+            // Phase 1.3: Start periodic heartbeat keepalive (every 2.5s)
+            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            heartbeatTimer = setInterval(sendHeartbeat, 2500);
+          };
+
+          ws.onclose = () => {
+            console.warn(`[MOBILE-CAM] WebSocket closed, retrying in ${reconnectDelay}ms...`);
+            setStatus(statServer, 'error', 'Disconnected');
+            if (heartbeatTimer) {
+              clearInterval(heartbeatTimer);
+              heartbeatTimer = null;
+            }
+            reconnectTimer = setTimeout(connectWebSocket, reconnectDelay);
+            reconnectDelay = Math.min(10000, reconnectDelay * 1.5);
+          };
+
+          ws.onerror = (e) => {
+            console.warn('[MOBILE-CAM] WebSocket error event');
+          };
+        } catch (e) {
+          console.error('[MOBILE-CAM] WebSocket connection exception:', e);
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+          reconnectTimer = setTimeout(connectWebSocket, 3000);
+        }
+      }
+
+      // 3. Load COCO-SSD Model
+      async function loadCocoModel() {
+        console.log('[MOBILE-CAM] Loading COCO-SSD');
+        setStatus(statAiModel, 'warn', 'Loading COCO-SSD...');
+        try {
+          if (typeof cocoSsd === 'undefined') {
+            throw new Error('COCO-SSD CDN script not ready');
+          }
+          cocoModel = await cocoSsd.load({ base: 'mobilenet_v2' });
+          cocoReady = true;
+          console.log('[MOBILE-CAM] COCO-SSD ready');
+          setStatus(statAiModel, 'ok', '● COCO-SSD READY');
+        } catch (err) {
+          cocoReady = false;
+          console.error('[MOBILE-CAM] Failed to load COCO-SSD:', err.message);
+          setStatus(statAiModel, 'error', 'Failed');
+          showError('AI Model Load Failed: ' + err.message);
+        }
+      }
+
+      // 4. Load MoveNet MultiPose Lightning Model
+      async function loadPoseModel() {
+        console.log('[MOBILE-CAM] Loading MoveNet MultiPose...');
+        setStatus(statPoseModel, 'warn', 'Loading MoveNet...');
+        try {
+          if (typeof poseDetection === 'undefined' || !poseDetection.createDetector) {
+            throw new Error('poseDetection library not available');
+          }
+          poseDetector = await poseDetection.createDetector(
+            poseDetection.SupportedModels.MoveNet,
+            { modelType: 'MULTIPOSE_LIGHTNING' }
+          );
+          poseReady = true;
+          poseAvailable = true;
+          console.log('[MOBILE-CAM] MoveNet MultiPose ready');
+          updatePoseStatusUI();
+        } catch (err) {
+          console.warn('[MOBILE-CAM] MoveNet unavailable, falling back to COCO-SSD only:', err.message);
+          poseDetector = null;
+          poseReady = false;
+          poseAvailable = false;
+          updatePoseStatusUI();
+        }
+      }
+
+      // IoU Matching between COCO-SSD box and MoveNet pose keypoint bounding box
+      function computeIoU(b1, b2) {
+        const x1 = Math.max(b1.x, b2.x);
+        const y1 = Math.max(b1.y, b2.y);
+        const x2 = Math.min(b1.x + b1.w, b2.x + b2.w);
+        const y2 = Math.min(b1.y + b1.h, b2.y + b2.h);
+        const interArea = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+        const unionArea = (b1.w * b1.h) + (b2.w * b2.h) - interArea;
+        return unionArea > 0 ? (interArea / unionArea) : 0;
+      }
+
+      // 5. On-Device Combined Detection & Pose Analytics Loop
+      async function detectionLoop() {
+        const cycleStart = performance.now();
+
+        try {
+          if (isStreaming && videoReady && cocoReady && video.readyState >= 2 && video.videoWidth > 0) {
+            const actualW = video.videoWidth;
+            const actualH = video.videoHeight;
+            const now = Date.now();
+
+            // Run COCO-SSD person detection
+            const preds = await cocoModel.detect(video);
+            const persons = preds.filter(p => p.class === 'person');
+
+            // Run MoveNet MultiPose estimation if active and available
+            let poses = [];
+            const poseActive = poseEnabled && poseReady && poseDetector;
+            if (poseActive) {
+              try {
+                poses = await poseDetector.estimatePoses(video);
+              } catch (poseErr) {
+                console.warn('[MOBILE-CAM] Pose estimate cycle error:', poseErr);
+                poses = [];
+              }
+            }
+
+            // Local Frame-to-Frame Track Association & Analytics
+            const currentDetections = [];
+            const matchedLocalIds = new Set();
+
+            persons.forEach(p => {
+              const rawBbox = {
+                x: Number((p.bbox[0] / actualW).toFixed(4)),
+                y: Number((p.bbox[1] / actualH).toFixed(4)),
+                w: Number((p.bbox[2] / actualW).toFixed(4)),
+                h: Number((p.bbox[3] / actualH).toFixed(4))
+              };
+              const rawCenter = {
+                x: rawBbox.x + rawBbox.w / 2,
+                y: rawBbox.y + rawBbox.h / 2
+              };
+
+              // Local Association to Previous Tracks by Nearest Centroid
+              let bestTrackId = null;
+              let bestDist = 0.22; // Normalized space association gate
+              localTracks.forEach((track, id) => {
+                if (matchedLocalIds.has(id)) return;
+                const d = Math.hypot(rawCenter.x - track.smoothedCenter.x, rawCenter.y - track.smoothedCenter.y);
+                if (d < bestDist) {
+                  bestDist = d;
+                  bestTrackId = id;
+                }
+              });
+
+              if (!bestTrackId) {
+                bestTrackId = 'MOBILE-' + String(nextLocalNum++).padStart(3, '0');
+                localTracks.set(bestTrackId, {
+                  localId: bestTrackId,
+                  smoothedCenter: { ...rawCenter },
+                  lastTimestamp: now,
+                  keypointHistory: new Map()
+                });
+              }
+              matchedLocalIds.add(bestTrackId);
+
+              const track = localTracks.get(bestTrackId);
+
+              // Exponential Smoothing on Center Position (alpha ~ 0.3)
+              const alpha = 0.3;
+              const prevSmoothed = { ...track.smoothedCenter };
+              track.smoothedCenter.x = Number((alpha * rawCenter.x + (1 - alpha) * prevSmoothed.x).toFixed(4));
+              track.smoothedCenter.y = Number((alpha * rawCenter.y + (1 - alpha) * prevSmoothed.y).toFixed(4));
+
+              // Compute Movement Deltas in Image-Space (Normalized 0-1)
+              const dx = Number((track.smoothedCenter.x - prevSmoothed.x).toFixed(4));
+              const dy = Number((track.smoothedCenter.y - prevSmoothed.y).toFixed(4));
+              const distance = Number(Math.hypot(dx, dy).toFixed(4));
+
+              // Deadzone around (0,0) to prevent spurious direction flapping
+              const DEADZONE = 0.008;
+              let direction = 'STATIONARY';
+              if (distance >= DEADZONE) {
+                const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+                if (angleDeg >= -22.5 && angleDeg < 22.5) direction = 'RIGHT';
+                else if (angleDeg >= 22.5 && angleDeg < 67.5) direction = 'DOWN_RIGHT';
+                else if (angleDeg >= 67.5 && angleDeg < 112.5) direction = 'DOWN';
+                else if (angleDeg >= 112.5 && angleDeg < 157.5) direction = 'DOWN_LEFT';
+                else if (angleDeg >= -67.5 && angleDeg < -22.5) direction = 'UP_RIGHT';
+                else if (angleDeg >= -112.5 && angleDeg < -67.5) direction = 'UP';
+                else if (angleDeg >= -157.5 && angleDeg < -112.5) direction = 'UP_LEFT';
+                else direction = 'LEFT';
+              }
+
+              const elapsedSec = Math.max(0.01, (now - track.lastTimestamp) / 1000);
+              // Explicitly labeled normalized-units-per-second, never km/h or m/s
+              const speedEstimate = Number((distance / elapsedSec).toFixed(3));
+              track.lastTimestamp = now;
+
+              // MoveNet Pose Association by IoU
+              let matchedPose = null;
+              if (poseActive && poses.length > 0) {
+                let bestIoU = 0.08;
+                poses.forEach(pose => {
+                  const validKp = (pose.keypoints || []).filter(k => (k.score || 0) > 0.2);
+                  if (validKp.length < 3) return;
+                  const minX = Math.min(...validKp.map(k => k.x)) / actualW;
+                  const maxX = Math.max(...validKp.map(k => k.x)) / actualW;
+                  const minY = Math.min(...validKp.map(k => k.y)) / actualH;
+                  const maxY = Math.max(...validKp.map(k => k.y)) / actualH;
+                  const pBox = { x: minX, y: minY, w: Math.max(0.02, maxX - minX), h: Math.max(0.04, maxY - minY) };
+                  const iou = computeIoU(rawBbox, pBox);
+                  if (iou > bestIoU) {
+                    bestIoU = iou;
+                    matchedPose = pose;
+                  }
+                });
+              }
+
+              // Compute Body Measurements in Pixels (and Normalized Equivalents)
+              let bodyMeasurements = null;
+              let bodyMotion = null;
+              let posePayload = null;
+
+              if (matchedPose && matchedPose.keypoints) {
+                const kpMap = {};
+                matchedPose.keypoints.forEach(k => { kpMap[k.name] = k; });
+
+                const ls = kpMap['left_shoulder'];
+                const rs = kpMap['right_shoulder'];
+                const lh = kpMap['left_hip'];
+                const rh = kpMap['right_hip'];
+                const lw = kpMap['left_wrist'];
+                const rw = kpMap['right_wrist'];
+
+                const shoulderWidthPx = (ls && rs && ls.score > 0.25 && rs.score > 0.25)
+                  ? Math.round(Math.hypot(ls.x - rs.x, ls.y - rs.y)) : null;
+
+                const hipWidthPx = (lh && rh && lh.score > 0.25 && rh.score > 0.25)
+                  ? Math.round(Math.hypot(lh.x - rh.x, lh.y - rh.y)) : null;
+
+                const torsoLengthPx = (ls && rs && lh && rh && ls.score > 0.25 && rs.score > 0.25 && lh.score > 0.25 && rh.score > 0.25)
+                  ? Math.round(Math.hypot((ls.x + rs.x)/2 - (lh.x + rh.x)/2, (ls.y + rs.y)/2 - (lh.y + rh.y)/2)) : null;
+
+                const armSpanPx = (lw && rw && lw.score > 0.30 && rw.score > 0.30)
+                  ? Math.round(Math.hypot(lw.x - rw.x, lw.y - rw.y)) : null;
+
+                bodyMeasurements = {
+                  calibrated: false, // Standard uncalibrated tag
+                  shoulderWidthPx,
+                  hipWidthPx,
+                  torsoLengthPx,
+                  armSpanPx
+                };
+
+                // Compute Frame-to-Frame Limb Displacement (Unitless Movement Magnitude)
+                let armDisp = 0, armCount = 0;
+                let legDisp = 0, legCount = 0;
+                let torsoDisp = 0, torsoCount = 0;
+
+                const limbGroups = {
+                  arms: ['left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow', 'left_wrist', 'right_wrist'],
+                  legs: ['left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle'],
+                  torso: ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']
+                };
+
+                limbGroups.arms.forEach(name => {
+                  const k = kpMap[name];
+                  const prevK = track.keypointHistory.get(name);
+                  if (k && prevK && k.score > 0.25) {
+                    armDisp += Math.hypot((k.x - prevK.x) / actualW, (k.y - prevK.y) / actualH);
+                    armCount++;
+                  }
+                  if (k && k.score > 0.25) track.keypointHistory.set(name, { x: k.x, y: k.y });
+                });
+
+                limbGroups.legs.forEach(name => {
+                  const k = kpMap[name];
+                  const prevK = track.keypointHistory.get(name);
+                  if (k && prevK && k.score > 0.25) {
+                    legDisp += Math.hypot((k.x - prevK.x) / actualW, (k.y - prevK.y) / actualH);
+                    legCount++;
+                  }
+                  if (k && k.score > 0.25) track.keypointHistory.set(name, { x: k.x, y: k.y });
+                });
+
+                limbGroups.torso.forEach(name => {
+                  const k = kpMap[name];
+                  const prevK = track.keypointHistory.get(name);
+                  if (k && prevK && k.score > 0.25) {
+                    torsoDisp += Math.hypot((k.x - prevK.x) / actualW, (k.y - prevK.y) / actualH);
+                    torsoCount++;
+                  }
+                });
+
+                const armMovement = armCount > 0 ? Number((armDisp / armCount).toFixed(4)) : 0;
+                const legMovement = legCount > 0 ? Number((legDisp / legCount).toFixed(4)) : 0;
+                const torsoMovement = torsoCount > 0 ? Number((torsoDisp / torsoCount).toFixed(4)) : 0;
+
+                // Coarse state strictly limited to STATIONARY | MOVING
+                const motionState = (distance >= DEADZONE || torsoMovement > 0.015) ? 'MOVING' : 'STATIONARY';
+
+                bodyMotion = {
+                  state: motionState,
+                  armMovement,
+                  legMovement,
+                  torsoMovement
+                };
+
+                posePayload = {
+                  score: Number((matchedPose.score || 0).toFixed(2)),
+                  keypoints: matchedPose.keypoints.map(kp => ({
+                    name: kp.name,
+                    x: Number((kp.x / actualW).toFixed(4)),
+                    y: Number((kp.y / actualH).toFixed(4)),
+                    confidence: Number((kp.score || 0).toFixed(2))
+                  }))
+                };
+              } else {
+                // Pose unavailable or unassociated; fallback bodyMotion from centroid
+                bodyMotion = {
+                  state: distance >= DEADZONE ? 'MOVING' : 'STATIONARY',
+                  armMovement: null,
+                  legMovement: null,
+                  torsoMovement: null
+                };
+              }
+
+              currentDetections.push({
+                localId: bestTrackId, // Informational client grouping label only
+                classLabel: 'person',
+                confidence: Number(p.score.toFixed(2)),
+                bbox: rawBbox,
+                movement: {
+                  center: track.smoothedCenter,
+                  delta: { x: dx, y: dy },
+                  distance,
+                  direction,
+                  speedEstimate
+                },
+                bodyMeasurements,
+                bodyMotion,
+                pose: posePayload,
+                rawPoseKeypoints: matchedPose ? matchedPose.keypoints : null // For local canvas drawing only
+              });
+            });
+
+            // Prune dead tracks (> 2.5s)
+            localTracks.forEach((track, id) => {
+              if (now - track.lastTimestamp > 2500) {
+                localTracks.delete(id);
+              }
+            });
+
+            // Transmit Structured Multi-Person Payload via WebSocket (Metadata ONLY)
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              const payload = {
+                type: 'MOBILE_DETECTION',
+                cameraId: 'CAM-MOBILE-01',
+                timestamp: now,
+                detections: currentDetections.map(d => ({
+                  classLabel: 'person',
+                  confidence: d.confidence,
+                  bbox: d.bbox
+                }))
+              };
+              console.log('[MOBILE-CAM] Sending MOBILE_DETECTION message:', payload);
+              ws.send(JSON.stringify(payload));
+              if (currentDetections.length > 0) {
+                console.log(`[MOBILE-CAM] Detection metadata sent: ${currentDetections.length} persons`);
+              }
+            }
+
+            // Update Phone Status HUD & Live Telemetry Tray
+            statPersonCount.textContent = currentDetections.length;
+            renderTelemetryTray(currentDetections, actualW, actualH);
+
+            // Render Local Canvas Overlays (Bounding Boxes, Direction Vectors, Skeletons)
+            if (overlayEnabled) {
+              renderHudOverlay(currentDetections, actualW, actualH);
+            } else {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+          }
+        } catch (cycleErr) {
+          console.warn('[MOBILE-CAM] Cycle inference error:', cycleErr);
+        }
+
+        // Performance Budget Monitor & Adaptive Cadence Tuning
+        const cycleTime = performance.now() - cycleStart;
+        if (cycleTime > 300) {
+          slowCycles++;
+          fastCycles = 0;
+          if (slowCycles >= 3 && currentInterval < 450) {
+            currentInterval = Math.min(500, currentInterval + 75);
+            console.log(`[MOBILE-CAM] Performance adaptation: cycle time ${Math.round(cycleTime)}ms, widening interval to ${currentInterval}ms`);
+            slowCycles = 0;
+          }
+        } else if (cycleTime < 180) {
+          fastCycles++;
+          slowCycles = 0;
+          if (fastCycles >= 6 && currentInterval > 175) {
+            currentInterval = Math.max(175, currentInterval - 40);
+            fastCycles = 0;
+          }
+        }
+
+        if (statCadence) {
+          statCadence.textContent = `${currentInterval}ms (~${Math.round(1000/currentInterval)}Hz)`;
+        }
+
+        // Schedule next cycle (chained setTimeout guarantees non-overlapping execution: setTimeout(detectionLoop, 175) base)
+        setTimeout(detectionLoop, currentInterval);
+      }
+
+      // Render Tactical Telemetry Cards in Drawer
+      function renderTelemetryTray(detections, actualW, actualH) {
+        if (!personsTelemetryList) return;
+        telemetryTrayCount.textContent = `${detections.length} TRACKED`;
+
+        if (detections.length === 0) {
+          personsTelemetryList.innerHTML = `
+            <div style="text-align:center;padding:12px;color:var(--text-dim)">
+              NO PERSONS IN FRAME — SENSOR IDLE
+            </div>
+          `;
+          return;
+        }
+
+        personsTelemetryList.innerHTML = detections.map(d => {
+          const wPx = Math.round(d.bbox.w * actualW);
+          const hPx = Math.round(d.bbox.h * actualH);
+          const conf = Math.round(d.confidence * 100);
+          const m = d.movement || {};
+          const meas = d.bodyMeasurements || {};
+          const mot = d.bodyMotion || {};
+          const hasPose = !!d.pose;
+
+          return `
+            <div class="person-card">
+              <div class="person-card-top">
+                <span class="person-id-tag">${d.localId}</span>
+                <span style="color:var(--accent-green)">${conf}% CONF</span>
+                <span style="font-size:8px;color:${hasPose ? 'var(--cyan)' : 'var(--text-dim)'}">
+                  ${hasPose ? '● POSE: TRACKED' : '○ POSE: N/A'}
+                </span>
+              </div>
+              <div class="person-metrics">
+                <div>SIZE: <strong>${wPx}x${hPx}px</strong></div>
+                <div>DIR: <strong style="color:var(--cyan)">${m.direction || 'STATIONARY'}</strong></div>
+                <div>STATE: <strong style="color:${mot.state === 'MOVING' ? 'var(--green)' : 'var(--amber)'}">${mot.state || 'IDLE'}</strong></div>
+                <div>SPEED: <strong>${m.speedEstimate || 0} norm/s</strong></div>
+                <div>SHOULDER: <strong>${meas.shoulderWidthPx ? meas.shoulderWidthPx + 'px' : '--'}</strong></div>
+                <div>HIP: <strong>${meas.hipWidthPx ? meas.hipWidthPx + 'px' : '--'}</strong></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Render Canvas HUD Overlay (BBoxes, Corner Brackets, Movement Arrows, MoveNet Skeleton)
+      function renderHudOverlay(detections, actualW, actualH) {
+        if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
+          canvas.width = canvas.clientWidth;
+          canvas.height = canvas.clientHeight;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!detections || detections.length === 0) return;
+
+        detections.forEach(det => {
+          const bx = det.bbox.x * canvas.width;
+          const by = det.bbox.y * canvas.height;
+          const bw = det.bbox.w * canvas.width;
+          const bh = det.bbox.h * canvas.height;
+
+          ctx.save();
+
+          // 1. Tactical Bounding Frame
+          ctx.strokeStyle = '#00e5ff';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(bx, by, bw, bh);
+
+          // Corner Brackets
+          const bLen = Math.min(14, bw * 0.25);
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(bx, by + bLen); ctx.lineTo(bx, by); ctx.lineTo(bx + bLen, by);
+          ctx.moveTo(bx + bw - bLen, by); ctx.lineTo(bx + bw, by); ctx.lineTo(bx + bw, by + bLen);
+          ctx.moveTo(bx, by + bh - bLen); ctx.lineTo(bx, by + bh); ctx.lineTo(bx + bLen, by + bh);
+          ctx.moveTo(bx + bw - bLen, by + bh); ctx.lineTo(bx + bw, by + bh); ctx.lineTo(bx + bw, by + bh - bLen);
+          ctx.stroke();
+
+          // Label Banner Top
+          const conf = Math.round(det.confidence * 100);
+          const topLabel = `${det.localId} ${conf}% [${det.movement?.direction || 'STATIONARY'}]`;
+          ctx.font = 'bold 10px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(topLabel).width;
+          ctx.fillStyle = 'rgba(0, 229, 255, 0.85)';
+          ctx.fillRect(bx, Math.max(0, by - 16), tw + 6, 16);
+          ctx.fillStyle = '#000';
+          ctx.fillText(topLabel, bx + 3, Math.max(12, by - 4));
+
+          // 2. Centroid & Movement Direction Vector
+          const cx = bx + bw / 2;
+          const cy = by + bh / 2;
+          ctx.fillStyle = '#00e676';
+          ctx.beginPath();
+          ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (det.movement && det.movement.direction !== 'STATIONARY') {
+            const arrowLen = Math.min(45, Math.max(15, det.movement.distance * canvas.width * 3));
+            const angle = Math.atan2(det.movement.delta.y, det.movement.delta.x);
+            const tox = cx + Math.cos(angle) * arrowLen;
+            const toy = cy + Math.sin(angle) * arrowLen;
+
+            ctx.strokeStyle = '#00e676';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(tox, toy);
+            ctx.stroke();
+
+            // Arrow head
+            const headlen = 7;
+            ctx.beginPath();
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fillStyle = '#00e676';
+            ctx.fill();
+          }
+
+          // 3. MoveNet Skeleton Lines and Keypoints
+          if (det.rawPoseKeypoints && det.rawPoseKeypoints.length > 0) {
+            const kpMap = {};
+            det.rawPoseKeypoints.forEach(k => {
+              kpMap[k.name] = {
+                x: (k.x / actualW) * canvas.width,
+                y: (k.y / actualH) * canvas.height,
+                score: k.score || 0
+              };
+            });
+
+            // Draw Skeleton Bones
+            ctx.strokeStyle = 'rgba(0, 230, 118, 0.75)';
+            ctx.lineWidth = 2;
+            SKELETON_PAIRS.forEach(([p1, p2]) => {
+              const k1 = kpMap[p1];
+              const k2 = kpMap[p2];
+              if (k1 && k2 && k1.score >= 0.30 && k2.score >= 0.30) {
+                ctx.beginPath();
+                ctx.moveTo(k1.x, k1.y);
+                ctx.lineTo(k2.x, k2.y);
+                ctx.stroke();
+              }
+            });
+
+            // Draw Keypoint Circles
+            det.rawPoseKeypoints.forEach(k => {
+              if (k.score >= 0.30) {
+                const kx = (k.x / actualW) * canvas.width;
+                const ky = (k.y / actualH) * canvas.height;
+                ctx.fillStyle = '#00e5ff';
+                ctx.beginPath();
+                ctx.arc(kx, ky, 2.5, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            });
+          }
+
+          ctx.restore();
+        });
+      }
+
+      // Bootstrap Page Sequence
+      console.log('[MOBILE-CAM] Page loaded');
+      console.log('[MOBILE-CAM] Secure context: ' + window.isSecureContext);
+      connectWebSocket();
+      startCamera(currentFacing);
+      loadCocoModel();
+      loadPoseModel();
+
+      // Launch Adaptive Inference Loop
+      setTimeout(detectionLoop, 350);
+    })();
+  </script>
+</body>
+</html>

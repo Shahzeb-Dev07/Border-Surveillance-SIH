@@ -7,10 +7,14 @@ const dataSources = require('../data/data_sources.json');
 
 console.log('--- RUNNING IBVAP SYSTEM VALIDATION SUITE ---');
 
-// 1. Verify Camera Streams Ingestion
+// 1. Verify Camera Streams Ingestion (Fixed CCTV + Mobile Ad-Hoc Feed)
 const cameras = cameraManager.getCameras();
-assert.strictEqual(cameras.length, 4, 'Should initialize exactly 4 simulated CCTV streams');
-console.log('✓ Camera Manager: 4 streams loaded with telemetry');
+assert.strictEqual(cameras.length, 5, 'Should initialize 4 perimeter streams + 1 mobile ad-hoc stream');
+const mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+assert.ok(mobileCam, 'CAM-MOBILE-01 must be registered in Camera Manager');
+assert.strictEqual(mobileCam.fovType, 'MOBILE_ADHOC', 'Mobile camera must be MOBILE_ADHOC');
+assert.strictEqual(mobileCam.capabilities.humanDetection, true, 'Mobile camera must support human detection');
+console.log('✓ Camera Manager: 5 streams loaded (4 fixed CCTV + 1 Mobile Ad-Hoc Unit) with telemetry');
 
 // 2. Verify Data Sources & Benchmarks Catalog
 assert.ok(dataSources.datasets, 'Data sources catalog must have datasets');
@@ -63,6 +67,22 @@ const hash = storage.computeChecksum(testEvent);
 assert.strictEqual(typeof hash, 'string', 'Hash should be a string');
 assert.strictEqual(hash.length, 64, 'SHA-256 hash must be exactly 64 hex characters');
 console.log('✓ Forensic Security: SHA-256 tamper-evident checksum verified (64 hex)');
+
+// 6. Verify Mobile Camera Ingestion & Alert Pipeline
+cameraManager.ingestMobileDetections([
+  {
+    classLabel: 'person',
+    confidence: 0.93,
+    bbox: { x: 0.45, y: 0.35, w: 0.20, h: 0.50 }
+  }
+], 'CAM-MOBILE-01');
+
+// Run tick to verify pipeline: tracker -> ruleEngine -> alertEngine
+const tickResult = cameraManager.tick();
+const updatedMobileCam = tickResult.cameras.find(c => c.id === 'CAM-MOBILE-01');
+assert.strictEqual(updatedMobileCam.status, 'ONLINE', 'CAM-MOBILE-01 should transition to ONLINE when receiving detections');
+assert.ok(updatedMobileCam.activeDetections.length > 0, 'Active detections should track ingested mobile person');
+console.log('✓ Mobile Pipeline: Live detection ingestion, IoU tracker, and rule evaluation verified');
 
 console.log('=== ALL IBVAP SYSTEM VALIDATIONS PASSED SUCCESSFULLY ===');
 process.exit(0);

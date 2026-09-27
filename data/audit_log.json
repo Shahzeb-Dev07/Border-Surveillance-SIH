@@ -1,6 +1,156 @@
 [
   {
     "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T13:02:47.098Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "3b6243e6419f28ca"
+  },
+  {
+    "user_id": "OP-SSB-4491",
+    "timestamp": "2026-09-27T12:50:24.412Z",
+    "action": "ZONE_EDIT",
+    "camera_id": "CAM-01",
+    "incident_id": "ZONE-UPDATE-CAM-01",
+    "result": "SUCCESS",
+    "notes": "Updated 1 virtual zones/tripwires for camera CAM-01.",
+    "checksum": "5dce81b9f26a6e87"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T12:07:27.775Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "6badd61673883e54"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T12:02:25.093Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "5e63b316b4873ec7"
+  },
+  {
+    "user_id": "SYSTEM_DAEMON",
+    "timestamp": "2026-09-27T11:34:41.658Z",
+    "action": "WAN_RESYNC_COMPLETED",
+    "camera_id": "CAM-01",
+    "incident_id": "SYSTEM-WAN-RESYNC",
+    "result": "SUCCESS",
+    "notes": "Successfully synced 37 queued events to Central C2 storage with zero loss.",
+    "checksum": "08821f102a3f0bbc"
+  },
+  {
+    "user_id": "SYSTEM_DAEMON",
+    "timestamp": "2026-09-27T11:00:56.624Z",
+    "action": "WAN_RESYNC_COMPLETED",
+    "camera_id": "CAM-01",
+    "incident_id": "SYSTEM-WAN-RESYNC",
+    "result": "SUCCESS",
+    "notes": "Successfully synced 4 queued events to Central C2 storage with zero loss.",
+    "checksum": "490f116e875c42fc"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T10:56:47.036Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "3766e0e7677492af"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T10:53:27.533Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "ac067da54e3af2cd"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T10:13:05.536Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "d5d00f47d937e38f"
+  },
+  {
+    "user_id": "SYSTEM_DAEMON",
+    "timestamp": "2026-09-27T09:49:27.627Z",
+    "action": "WAN_RESYNC_COMPLETED",
+    "camera_id": "CAM-01",
+    "incident_id": "SYSTEM-WAN-RESYNC",
+    "result": "SUCCESS",
+    "notes": "Successfully synced 200 queued events to Central C2 storage with zero loss.",
+    "checksum": "b0aa07dbc791d0c2"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T07:19:42.718Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "3abe138761297054"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T06:45:38.773Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "d442c6469e05d620"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T06:45:08.744Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "9ceb19153f99511c"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T06:40:31.651Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "5e1246a35d5a7b73"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-26T23:26:10.554Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "28aea3ebcebd9799"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
     "timestamp": "2026-09-26T22:18:30.309Z",
     "action": "VERIFY_TEST_RUN",
     "camera_id": "CAM-01",

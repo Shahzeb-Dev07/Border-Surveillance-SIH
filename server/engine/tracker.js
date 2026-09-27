@@ -1,4 +1,7 @@
 // ByteTrack-inspired lightweight multi-object tracker
+// Implements geometric IoU association, centroid smoothing, velocity vector estimation,
+// trajectory tracking, and dwell timing in pure JavaScript.
+// Production edge deployment would integrate full ByteTrack with Kalman filtering and low/high score two-stage matching.
 class MultiObjectTracker {
   constructor() {
     this.tracks = new Map(); // trackId -> TrackObject
@@ -79,6 +82,7 @@ class MultiObjectTracker {
         det.trajectory = track.trajectory;
         det.dwellSec = track.dwellSec;
         det.speed = track.speed;
+        det.hits = track.hits;
       } else {
         unmatchedDetections.push(det);
       }
@@ -110,6 +114,7 @@ class MultiObjectTracker {
       det.trajectory = newTrack.trajectory;
       det.dwellSec = 0;
       det.speed = 0;
+      det.hits = newTrack.hits;
     }
 
     // Age and prune lost tracks

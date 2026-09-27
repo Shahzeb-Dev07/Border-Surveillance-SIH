@@ -158,6 +158,23 @@ class StorageEngine {
           ],
           enabled: true
         }
+      ],
+      'CAM-MOBILE-01': [
+        {
+          id: 'ZONE-MOBILE-01',
+          name: 'Mobile Patrol Exclusion Zone',
+          type: 'polygon',
+          rule: 'VIRTUAL_FENCE',
+          severity: 'CRITICAL',
+          color: '#ff3d71',
+          points: [
+            { x: 0.02, y: 0.02 },
+            { x: 0.98, y: 0.02 },
+            { x: 0.98, y: 0.98 },
+            { x: 0.02, y: 0.98 }
+          ],
+          enabled: true
+        }
       ]
     };
   }

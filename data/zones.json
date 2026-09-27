@@ -34,34 +34,6 @@
         }
       ],
       "enabled": true
-    },
-    {
-      "id": "ZONE-CAM01-02",
-      "name": "Patrol Track Loitering Zone",
-      "type": "polygon",
-      "rule": "DWELL_VIOLATION",
-      "dwellThresholdSec": 6,
-      "severity": "HIGH",
-      "color": "#ffaa00",
-      "points": [
-        {
-          "x": 0.48,
-          "y": 0.55
-        },
-        {
-          "x": 0.65,
-          "y": 0.4
-        },
-        {
-          "x": 0.78,
-          "y": 0.6
-        },
-        {
-          "x": 0.58,
-          "y": 0.82
-        }
-      ],
-      "enabled": true
     }
   ],
   "CAM-02": [
@@ -175,6 +147,35 @@
         {
           "x": 0.58,
           "y": 0.58
+        }
+      ],
+      "enabled": true
+    }
+  ],
+  "CAM-MOBILE-01": [
+    {
+      "id": "ZONE-MOBILE-01",
+      "name": "Mobile Patrol Exclusion Zone",
+      "type": "polygon",
+      "rule": "VIRTUAL_FENCE",
+      "severity": "CRITICAL",
+      "color": "#ff3d71",
+      "points": [
+        {
+          "x": 0.02,
+          "y": 0.02
+        },
+        {
+          "x": 0.98,
+          "y": 0.02
+        },
+        {
+          "x": 0.98,
+          "y": 0.98
+        },
+        {
+          "x": 0.02,
+          "y": 0.98
         }
       ],
       "enabled": true

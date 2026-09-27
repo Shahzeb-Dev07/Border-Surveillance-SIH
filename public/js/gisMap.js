@@ -14,7 +14,8 @@ class TacticalGisMap {
       { id: 'CAM-01', name: 'Tower Alpha', bop: 'BOP 14', x: 0.32, y: 0.65, type: 'tower' },
       { id: 'CAM-02', name: 'Checkpost Gate', bop: 'BOP 14', x: 0.42, y: 0.52, type: 'chokepoint' },
       { id: 'CAM-03', name: 'Sector 4 Ridge', bop: 'BOP 18', x: 0.68, y: 0.38, type: 'ir_tower' },
-      { id: 'CAM-04', name: 'Pass Road', bop: 'BOP 22', x: 0.85, y: 0.22, type: 'road' }
+      { id: 'CAM-04', name: 'Pass Road', bop: 'BOP 22', x: 0.85, y: 0.22, type: 'road' },
+      { id: 'CAM-MOBILE-01', name: 'Mobile Patrol', bop: 'QRT Unit', x: 0.52, y: 0.68, type: 'mobile' }
     ];
 
     if (this.canvas) {

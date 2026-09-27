@@ -103,8 +103,38 @@ class CameraManager {
         status: 'ONLINE',
         tracker: new MultiObjectTracker(),
         simTime: 0
+      },
+      {
+        id: 'CAM-MOBILE-01',
+        name: 'Mobile Recon Patrol (Smartphone Ad-Hoc Feed)',
+        bop: 'Mobile QRT Recon Unit',
+        location: 'Tactical Recon Point // Dynamic Smartphone Feed',
+        rtspUrl: 'webrtc://edge-mobile-stream/live',
+        snapshotUri: '/assets/cam_bop_mobile.jpg',
+        resolution: 'Mobile 720p @ 8fps',
+        mode: 'DAYLIGHT_RGB',
+        fovType: 'MOBILE_ADHOC',
+        capabilities: {
+          humanDetection: true,
+          humanTracking: true,
+          virtualFence: true,
+          anpr: false,
+          faceRecognition: false,
+          nightIr: false
+        },
+        fps: 8.0,
+        latencyMs: 14.5,
+        status: 'WAITING',
+        hasReceivedConnect: false,
+        tracker: new MultiObjectTracker(),
+        simTime: 0,
+        isMobile: true
       }
     ];
+
+    // Mobile camera runtime state
+    this.latestMobileDetections = [];
+    this.lastMobileSeen = 0;
 
     // Hardware Telemetry Simulation
     this.edgeTelemetry = {
@@ -120,7 +150,10 @@ class CameraManager {
     };
   }
 
-  // Generates realistic spatial-temporal detections for each camera scenario
+  // Generates synthetic spatial-temporal detections for each camera scenario
+  // In this prototype, detections and choke-point metadata are simulated to drive the downstream
+  // C2 rule engine, multi-object tracker, and anti-flooding aggregator without requiring an edge GPU.
+  // Production deployment would replace this with ONNX Runtime YOLOv8/ByteTrack stream inference.
   _generateDetections(camera) {
     const t = camera.simTime;
     const dets = [];
@@ -283,7 +316,128 @@ class CameraManager {
     return { dets, meta };
   }
 
-  // Advances simulation tick across all active cameras
+  // Ingests real mobile detections from smartphone client
+  ingestMobileDetections(arg1, arg2, arg3) {
+    let cameraId = 'CAM-MOBILE-01';
+    let detections = [];
+    let metaInfo = {};
+
+    if (typeof arg1 === 'string') {
+      cameraId = arg1;
+      if (Array.isArray(arg2)) {
+        detections = arg2;
+        metaInfo = arg3 || {};
+      } else if (arg2 && typeof arg2 === 'object') {
+        detections = arg2.detections || [];
+        metaInfo = arg2;
+      }
+    } else if (Array.isArray(arg1)) {
+      detections = arg1;
+      if (typeof arg2 === 'string') cameraId = arg2;
+      metaInfo = arg3 || {};
+    } else if (arg1 && typeof arg1 === 'object') {
+      cameraId = arg1.cameraId || 'CAM-MOBILE-01';
+      detections = arg1.detections || [];
+      metaInfo = arg1;
+    }
+
+    const cam = this.getCamera(cameraId);
+    if (!cam) return;
+    const now = Date.now();
+    cam.hasReceivedConnect = true;
+    cam.hasReceivedMobileMessage = true;
+    cam.lastReceivedAt = now;
+    cam.clientConnected = true;
+    this.mobileClientConnected = true;
+    const prevStatus = cam.status;
+    cam.status = 'ONLINE';
+    if (cam.status !== prevStatus && this.onStatusChange) {
+      this.onStatusChange(cam);
+    }
+
+    // Store rich non-authoritative client telemetry for dashboard display
+    cam.mobileTelemetry = {
+      timestamp: now,
+      frameWidth: metaInfo.frameWidth || 1280,
+      frameHeight: metaInfo.frameHeight || 720,
+      poseEngineActive: metaInfo.poseEngineActive !== undefined ? !!metaInfo.poseEngineActive : true,
+      detections: detections
+    };
+
+    // Extract ONLY standard { classLabel, confidence, bbox } for tracker.js
+    cam.latestMobileDetections = detections.map(d => ({
+      classLabel: d.classLabel || 'person',
+      confidence: typeof d.confidence === 'number' ? d.confidence : 0.9,
+      bbox: d.bbox || { x: 0, y: 0, w: 0.1, h: 0.2 }
+    }));
+
+    cam.lastKnownPersonCount = cam.latestMobileDetections.length;
+    this.latestMobileDetections = cam.latestMobileDetections;
+    this.lastMobileSeen = now;
+  }
+
+  registerMobileConnect(cameraId = 'CAM-MOBILE-01') {
+    const cam = this.getCamera(cameraId);
+    if (!cam) return;
+    const now = Date.now();
+    cam.hasReceivedConnect = true;
+    cam.hasReceivedMobileMessage = true;
+    cam.clientConnected = true;
+    this.mobileClientConnected = true;
+    cam.lastReceivedAt = now;
+    const prev = cam.status;
+    cam.status = 'ONLINE';
+    if (cam.status !== prev && this.onStatusChange) {
+      this.onStatusChange(cam);
+    }
+  }
+
+  ingestMobileHeartbeat(cameraId = 'CAM-MOBILE-01') {
+    const cam = this.getCamera(cameraId);
+    if (!cam) return;
+    const now = Date.now();
+    cam.hasReceivedConnect = true;
+    cam.hasReceivedMobileMessage = true;
+    cam.clientConnected = true;
+    this.mobileClientConnected = true;
+    cam.lastReceivedAt = now;
+    const prev = cam.status;
+    if (cam.status !== 'ONLINE') {
+      cam.status = 'ONLINE';
+      if (this.onStatusChange) {
+        this.onStatusChange(cam);
+      }
+    }
+  }
+
+  handleMobileDisconnect(cameraId = 'CAM-MOBILE-01') {
+    const cam = this.getCamera(cameraId);
+    if (cam) {
+      cam.clientConnected = false;
+      this.mobileClientConnected = false;
+      const prev = cam.status;
+      cam.status = 'OFFLINE';
+      if (cam.status !== prev && this.onStatusChange) {
+        this.onStatusChange(cam);
+      }
+    }
+  }
+
+  setMobileClientConnected(connected = true) {
+    const cam = this.getCamera('CAM-MOBILE-01');
+    if (cam) {
+      cam.clientConnected = connected;
+      this.mobileClientConnected = connected;
+      const prev = cam.status;
+      if (!connected && (cam.hasReceivedMobileMessage || cam.hasReceivedConnect)) {
+        cam.status = 'OFFLINE';
+      }
+      if (cam.status !== prev && this.onStatusChange) {
+        this.onStatusChange(cam);
+      }
+    }
+  }
+
   tick() {
     const config = storage.getRulesConfig();
     const frameEvents = [];
@@ -297,11 +451,87 @@ class CameraManager {
     for (const camera of this.cameras) {
       camera.simTime += 0.5; // step time
 
-      // 1. Raw Detections
-      const { dets, meta } = this._generateDetections(camera);
+      // 1. Raw Detections (Use live ingested detections for mobile camera, synthetic for others)
+      let dets, meta;
+      if (camera.isMobile || camera.id === 'CAM-MOBILE-01') {
+        const lastRx = camera.lastReceivedAt || 0;
+        const timeSinceLastMobile = lastRx === 0 ? 0 : (Date.now() - lastRx);
+        const prevStatus = camera.status;
 
-      // 2. Multi-Object Tracking (ByteTrack style)
+        // State Machine:
+        // WAITING — no MOBILE_CAMERA_CONNECT received yet this server run
+        // ONLINE  — connected AND a MOBILE_DETECTION or MOBILE_HEARTBEAT received within the last ~3s
+        // STALE   — connected, but nothing received in >3s
+        // OFFLINE — the WebSocket for this client actually closed, or nothing received for >15s
+        if (!camera.hasReceivedConnect && !camera.hasReceivedMobileMessage) {
+          camera.status = 'WAITING';
+          dets = [];
+        } else if (camera.clientConnected === false || timeSinceLastMobile > 15000) {
+          camera.status = 'OFFLINE';
+          dets = [];
+        } else if (timeSinceLastMobile > 3000) {
+          camera.status = 'STALE';
+          dets = [];
+        } else {
+          camera.status = 'ONLINE';
+          dets = camera.latestMobileDetections || [];
+          camera.lastKnownPersonCount = dets.length;
+        }
+
+        if (camera.status !== prevStatus && this.onStatusChange) {
+          this.onStatusChange(camera);
+        }
+
+        meta = {
+          sensor: 'SMARTPHONE_COCO_SSD',
+          link: 'EDGE_WEBSOCKET_METADATA',
+          bandwidthRate: '120_KBPS_METADATA_ONLY',
+          detectionsCount: dets.length,
+          lastKnownPersonCount: camera.lastKnownPersonCount || 0,
+          lastSeenMs: timeSinceLastMobile,
+          lastReceivedAt: lastRx,
+          stale: camera.status === 'STALE',
+          offline: camera.status === 'OFFLINE',
+          hasConnectedClient: !!camera.clientConnected,
+          hasReceivedMobileMessage: !!camera.hasReceivedConnect || !!camera.hasReceivedMobileMessage,
+          mobileTelemetry: camera.mobileTelemetry || null
+        };
+      } else {
+        const gen = this._generateDetections(camera);
+        dets = gen.dets;
+        meta = gen.meta;
+      }
+
+      // 2. Multi-Object Tracking (Lightweight IoU Tracker, ByteTrack-inspired)
       const trackedObjects = camera.tracker.update(dets, camera.fps);
+
+      // Attach client movement & pose telemetry to server-side tracked objects for dashboard display
+      if (camera.isMobile || camera.id === 'CAM-MOBILE-01') {
+        const clientDets = (camera.mobileTelemetry && camera.mobileTelemetry.detections) || [];
+        trackedObjects.forEach(tObj => {
+          let bestMatch = null;
+          let bestDist = 0.25;
+          const tCentroid = { x: tObj.bbox.x + tObj.bbox.w / 2, y: tObj.bbox.y + tObj.bbox.h / 2 };
+
+          for (const cDet of clientDets) {
+            if (!cDet.bbox) continue;
+            const cCentroid = { x: cDet.bbox.x + cDet.bbox.w / 2, y: cDet.bbox.y + cDet.bbox.h / 2 };
+            const dist = Math.hypot(tCentroid.x - cCentroid.x, tCentroid.y - cCentroid.y);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestMatch = cDet;
+            }
+          }
+
+          if (bestMatch) {
+            tObj.movement = bestMatch.movement || null;
+            tObj.bodyMeasurements = bestMatch.bodyMeasurements || null;
+            tObj.bodyMotion = bestMatch.bodyMotion || null;
+            tObj.pose = bestMatch.pose || null;
+            tObj.clientLocalId = bestMatch.localId || null;
+          }
+        });
+      }
 
       // 3. Rule Engine Evaluation
       const zones = storage.getZones(camera.id);
@@ -358,7 +588,8 @@ class CameraManager {
       capabilities: c.capabilities,
       fps: c.fps,
       latencyMs: c.latencyMs,
-      status: c.status
+      status: c.status,
+      isMobile: !!c.isMobile
     }));
   }
 
