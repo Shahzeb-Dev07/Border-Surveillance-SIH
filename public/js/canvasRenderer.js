@@ -66,7 +66,37 @@ class CanvasRenderer {
     if (img && img.complete && img.naturalWidth > 0) {
       ctx.drawImage(img, 0, 0, w, h);
     } else if (this.currentCamera.id === 'CAM-MOBILE-01') {
-      this._renderMobileFeedBackdrop(ctx, w, h);
+      if (this.currentCamera.frameImage) {
+        if (!this.mobileFrameImg) {
+          this.mobileFrameImg = new Image();
+        }
+        if (this.mobileFrameImg.src !== this.currentCamera.frameImage) {
+          this.mobileFrameImg.src = this.currentCamera.frameImage;
+        }
+        if (this.mobileFrameImg.complete && this.mobileFrameImg.naturalWidth > 0) {
+          ctx.drawImage(this.mobileFrameImg, 0, 0, w, h);
+          // Draw subtle tactical reticle & scanline for military C2 focal aesthetic
+          ctx.save();
+          ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
+          ctx.lineWidth = 1;
+          const cx = w / 2;
+          const cy = h / 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 45, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(cx - 55, cy); ctx.lineTo(cx - 15, cy);
+          ctx.moveTo(cx + 15, cy); ctx.lineTo(cx + 55, cy);
+          ctx.moveTo(cx, cy - 55); ctx.lineTo(cx, cy - 15);
+          ctx.moveTo(cx, cy + 15); ctx.lineTo(cx, cy + 55);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          this._renderMobileFeedBackdrop(ctx, w, h);
+        }
+      } else {
+        this._renderMobileFeedBackdrop(ctx, w, h);
+      }
     } else {
       // Standby noise/placeholder
       ctx.fillStyle = '#0b1118';
@@ -105,10 +135,12 @@ class CanvasRenderer {
       if (!zone.enabled || !zone.points || zone.points.length < 2) continue;
 
       ctx.save();
-      const color = zone.color || '#ff3d71';
+      const isRed = (zone.color || '').startsWith('#ff') || zone.type === 'polygon';
+      const strokeColor = isRed ? 'rgba(231, 76, 94, 0.7)' : 'rgba(91, 138, 245, 0.7)';
+      const fillColor = isRed ? 'rgba(231, 76, 94, 0.06)' : 'rgba(91, 138, 245, 0.05)';
 
       if (zone.type === 'polygon' && zone.points.length >= 3) {
-        // Draw filled translucent danger polygon
+        // Draw subtle translucent perimeter
         ctx.beginPath();
         ctx.moveTo(zone.points[0].x * w, zone.points[0].y * h);
         for (let i = 1; i < zone.points.length; i++) {
@@ -116,20 +148,19 @@ class CanvasRenderer {
         }
         ctx.closePath();
 
-        ctx.fillStyle = color.startsWith('#ff') ? 'rgba(255, 61, 113, 0.15)' : 'rgba(0, 229, 255, 0.12)';
+        ctx.fillStyle = fillColor;
         ctx.fill();
 
-        // Glowing dashed perimeter
-        ctx.setLineDash([8, 6]);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Zone Tag Label
+        // Clean small zone label
         const firstPt = zone.points[0];
-        ctx.font = 'bold 10px "JetBrains Mono", monospace';
-        ctx.fillStyle = color;
-        ctx.fillText(`[ ${zone.name.toUpperCase()} ]`, firstPt.x * w + 6, firstPt.y * h - 6);
+        ctx.font = '500 10px "Inter", sans-serif';
+        ctx.fillStyle = strokeColor;
+        const cleanName = zone.name.replace(/_/g, ' ');
+        ctx.fillText(cleanName, firstPt.x * w + 6, firstPt.y * h - 6);
       } else if (zone.type === 'tripwire' && zone.points.length >= 2) {
         // Directional Tripwire Line
         const p1 = { x: zone.points[0].x * w, y: zone.points[0].y * h };
@@ -138,17 +169,15 @@ class CanvasRenderer {
         ctx.beginPath();
         ctx.moveTo(p1.x, p1.y);
         ctx.lineTo(p2.y, p2.y);
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Tripwire arrow indicator
         const midX = (p1.x + p2.x) / 2;
         const midY = (p1.y + p2.y) / 2;
-        ctx.font = 'bold 9px "JetBrains Mono", monospace';
-        ctx.fillStyle = color;
-        ctx.fillText(`TRIPWIRE: ${zone.name}`, midX - 30, midY - 8);
+        ctx.font = '500 10px "Inter", sans-serif';
+        ctx.fillStyle = strokeColor;
+        ctx.fillText(zone.name, midX - 20, midY - 6);
       }
       ctx.restore();
     }
@@ -197,132 +226,52 @@ class CanvasRenderer {
       const bw = obj.bbox.w * w;
       const bh = obj.bbox.h * h;
 
-      const isSuspect = (obj.classLabel === 'person' && obj.dwellSec > 4);
-      const isVehicle = obj.classLabel.includes('vehicle');
-      const boxColor = isSuspect ? '#ff3d71' : (isVehicle ? '#ffb300' : '#00e5ff');
+      const cl = (obj.classLabel || 'object').toLowerCase();
+      const isSuspect = (cl === 'person' && obj.dwellSec > 4);
+      const isVehicle = ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle'].includes(cl);
+      const isDevice = ['cell phone', 'phone', 'laptop', 'mouse', 'keyboard', 'tv', 'remote'].includes(cl);
+      const isThreat = ['knife', 'scissors', 'weapon', 'gun'].includes(cl);
 
-      // 1. Draw Trajectory Trail
-      if (obj.trajectory && obj.trajectory.length > 1) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(obj.trajectory[0].x * w, obj.trajectory[0].y * h);
-        for (let i = 1; i < obj.trajectory.length; i++) {
-          ctx.lineTo(obj.trajectory[i].x * w, obj.trajectory[i].y * h);
-        }
-        ctx.strokeStyle = isSuspect ? 'rgba(255, 61, 113, 0.4)' : 'rgba(0, 229, 255, 0.35)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([2, 3]);
-        ctx.stroke();
-        ctx.restore();
-      }
+      let boxColor = '#34c759'; // Clean emerald green for authorized/standard
+      if (isThreat || isSuspect) boxColor = '#e74c5e'; // Clean red for breach/alert
+      else if (isVehicle) boxColor = '#f5a623'; // Amber for vehicle
+      else if (cl === 'person') boxColor = isSuspect ? '#e74c5e' : '#34c759';
 
-      // 2. Draw Tactical Corner Brackets (High-tech C2 style)
+      // 1. Crisp Professional Bounding Box
       ctx.save();
       ctx.strokeStyle = boxColor;
-      ctx.lineWidth = 2;
-      const corner = Math.min(10, bw / 4, bh / 4);
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx, by, bw, bh);
 
-      // Top-Left
-      ctx.beginPath();
-      ctx.moveTo(bx, by + corner);
-      ctx.lineTo(bx, by);
-      ctx.lineTo(bx + corner, by);
-      ctx.stroke();
-
-      // Top-Right
-      ctx.beginPath();
-      ctx.moveTo(bx + bw - corner, by);
-      ctx.lineTo(bx + bw, by);
-      ctx.lineTo(bx + bw, by + corner);
-      ctx.stroke();
-
-      // Bottom-Left
-      ctx.beginPath();
-      ctx.moveTo(bx, by + bh - corner);
-      ctx.lineTo(bx, by + bh);
-      ctx.lineTo(bx + corner, by + bh);
-      ctx.stroke();
-
-      // Bottom-Right
-      ctx.beginPath();
-      ctx.moveTo(bx + bw - corner, by + bh);
-      ctx.lineTo(bx + bw, by + bh);
-      ctx.lineTo(bx + bw, by + bh - corner);
-      ctx.stroke();
-
-      // Translucent box fill
-      ctx.fillStyle = isSuspect ? 'rgba(255, 61, 113, 0.12)' : 'rgba(0, 229, 255, 0.06)';
+      // Subtle 4% box fill for clear target identification
+      ctx.fillStyle = isSuspect ? 'rgba(231, 76, 94, 0.08)' : (isThreat ? 'rgba(231, 76, 94, 0.08)' : 'rgba(52, 199, 89, 0.04)');
       ctx.fillRect(bx, by, bw, bh);
 
-      // 3. Label Pill Top
+      // 2. Clean Label Pill at Top
       const confPct = Math.round((obj.confidence || 0.9) * 100);
-      const labelText = `${obj.classLabel.toUpperCase()} [${obj.trackId || 'TRK'}] ${confPct}%`;
-      ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      const textWidth = ctx.measureText(labelText).width;
+      let labelName = (obj.classLabel || 'object').replace(/_/g, ' ');
+      // Capitalize first letter
+      labelName = labelName.charAt(0).toUpperCase() + labelName.slice(1);
+      const tagText = isSuspect ? `${labelName} · Alert` : `${labelName} ${confPct}%`;
 
-      ctx.fillStyle = boxColor;
-      ctx.fillRect(bx, by - 18, textWidth + 8, 16);
+      ctx.font = '500 11px "Inter", -apple-system, sans-serif';
+      const textWidth = ctx.measureText(tagText).width;
+      const pillW = textWidth + 10;
+      const pillH = 18;
+      const pillY = by >= pillH ? by - pillH : by;
 
-      ctx.fillStyle = '#000';
-      ctx.fillText(labelText, bx + 4, by - 6);
+      ctx.fillStyle = isSuspect ? '#e74c5e' : '#1c1f27';
+      ctx.fillRect(bx, pillY, pillW, pillH);
 
-      // 4. Dwell Time / Speed HUD (Over target)
-      let bottomOffset = 4;
-      if (obj.dwellSec > 1) {
-        const dwellText = `DWELL: ${obj.dwellSec.toFixed(1)}s`;
-        ctx.font = '9px "JetBrains Mono", monospace';
-        const dWidth = ctx.measureText(dwellText).width;
-
-        ctx.fillStyle = isSuspect ? 'rgba(255, 61, 113, 0.85)' : 'rgba(0, 0, 0, 0.7)';
-        ctx.fillRect(bx, by + bh + bottomOffset, dWidth + 6, 14);
-
-        ctx.fillStyle = '#fff';
-        ctx.fillText(dwellText, bx + 3, by + bh + bottomOffset + 10);
-        bottomOffset += 18;
+      if (!isSuspect) {
+        ctx.strokeStyle = boxColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, pillY, pillW, pillH);
       }
 
-      // 5. Tactical Movement Vector & Direction Badge (Image-space only)
-      if (obj.movement) {
-        const dir = obj.movement.direction || 'STATIONARY';
-        const speedText = typeof obj.movement.speedEstimate === 'number' ? ` | ${obj.movement.speedEstimate.toFixed(2)} norm/s` : '';
-        const moveLabel = `DIR: ${dir}${speedText}`;
-        ctx.font = '9px "JetBrains Mono", monospace';
-        const mWidth = ctx.measureText(moveLabel).width;
-
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        ctx.fillRect(bx, by + bh + bottomOffset, mWidth + 6, 14);
-
-        ctx.fillStyle = dir !== 'STATIONARY' ? '#ffb300' : '#00e5ff';
-        ctx.fillText(moveLabel, bx + 3, by + bh + bottomOffset + 10);
-
-        // Draw movement vector arrow from bbox centroid
-        if (dir !== 'STATIONARY' && obj.movement.delta) {
-          const cx = bx + bw / 2;
-          const cy = by + bh / 2;
-          const arrowLen = 28;
-          const dist = Math.hypot(obj.movement.delta.x, obj.movement.delta.y) || 0.001;
-          const ndx = (obj.movement.delta.x / dist) * arrowLen;
-          const ndy = (obj.movement.delta.y / dist) * arrowLen;
-
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(cx + ndx, cy + ndy);
-          ctx.strokeStyle = '#ffb300';
-          ctx.lineWidth = 2;
-          ctx.stroke();
-
-          const angle = Math.atan2(ndy, ndx);
-          ctx.beginPath();
-          ctx.moveTo(cx + ndx, cy + ndy);
-          ctx.lineTo(cx + ndx - 7 * Math.cos(angle - Math.PI / 6), cy + ndy - 7 * Math.sin(angle - Math.PI / 6));
-          ctx.lineTo(cx + ndx - 7 * Math.cos(angle + Math.PI / 6), cy + ndy - 7 * Math.sin(angle + Math.PI / 6));
-          ctx.closePath();
-          ctx.fillStyle = '#ffb300';
-          ctx.fill();
-          ctx.restore();
-        }
-      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(tagText, bx + 5, pillY + 13);
+      ctx.restore();
 
       // 6. MoveNet Pose Skeleton Overlay (if pose keypoints attached)
       if (obj.pose && Array.isArray(obj.pose.keypoints)) {
@@ -380,135 +329,66 @@ class CanvasRenderer {
         const pw = crop.w * w;
         const ph = crop.h * h;
 
-        // Plate bounding frame
-        ctx.strokeStyle = '#ffb300';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#f5a623';
+        ctx.lineWidth = 1.5;
         ctx.strokeRect(px, py, pw, ph);
 
-        // OCR Result Badge
-        const tag = `ANPR: ${anpr.plateNumber} (${Math.round(anpr.confidence * 100)}%)`;
-        ctx.font = 'bold 11px "JetBrains Mono", monospace';
+        const tag = `Plate: ${anpr.plateNumber}`;
+        ctx.font = '500 11px "Inter", -apple-system, sans-serif';
         const tw = ctx.measureText(tag).width;
 
-        ctx.fillStyle = '#ffb300';
-        ctx.fillRect(px, py - 18, tw + 8, 16);
-        ctx.fillStyle = '#000';
-        ctx.fillText(tag, px + 4, py - 6);
+        ctx.fillStyle = '#1c1f27';
+        ctx.fillRect(px, py - 18, tw + 8, 18);
+        ctx.strokeStyle = '#f5a623';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px, py - 18, tw + 8, 18);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(tag, px + 4, py - 5);
 
-        ctx.restore();
-      }
-    }
-
-    if (this.meta && this.meta.face) {
-      const face = this.meta.face;
-      const fc = face.faceCrop;
-      if (fc) {
-        ctx.save();
-        const fx = fc.x * w;
-        const fy = fc.y * h;
-        const fw = fc.w * w;
-        const fh = fc.h * h;
-
-        ctx.strokeStyle = 'rgba(0, 229, 255, 0.8)';
-        ctx.lineWidth = 1.5;
-        ctx.strokeRect(fx, fy, fw, fh);
-
-        ctx.font = '8px "JetBrains Mono", monospace';
-        ctx.fillStyle = 'rgba(0, 229, 255, 0.9)';
-        ctx.fillText('FACE DETECT: CONDITIONAL', fx - 10, fy - 4);
         ctx.restore();
       }
     }
   }
 
   _renderMobileFeedBackdrop(ctx, w, h) {
-    // Dark tactical background with high-tech grid
-    ctx.fillStyle = '#03070d';
+    ctx.fillStyle = '#111318';
     ctx.fillRect(0, 0, w, h);
 
-    // Subtle perspective grid
-    ctx.strokeStyle = 'rgba(0, 229, 255, 0.05)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < w; x += 36) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, h);
-      ctx.stroke();
-    }
-    for (let y = 0; y < h; y += 36) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(w, y);
-      ctx.stroke();
-    }
-
-    // Concentric range rings in center
     const cx = w / 2;
     const cy = h / 2;
-    ctx.strokeStyle = 'rgba(0, 229, 255, 0.12)';
-    ctx.beginPath();
-    ctx.arc(cx, cy, 60, 0, Math.PI * 2);
-    ctx.arc(cx, cy, 120, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Corner targeting brackets
-    const bSize = 30;
-    const pad = 24;
-    ctx.strokeStyle = 'rgba(0, 229, 255, 0.4)';
-    ctx.lineWidth = 2;
-    // Top-left
-    ctx.beginPath(); ctx.moveTo(pad, pad + bSize); ctx.lineTo(pad, pad); ctx.lineTo(pad + bSize, pad); ctx.stroke();
-    // Top-right
-    ctx.beginPath(); ctx.moveTo(w - pad - bSize, pad); ctx.lineTo(w - pad, pad); ctx.lineTo(w - pad, pad + bSize); ctx.stroke();
-    // Bottom-left
-    ctx.beginPath(); ctx.moveTo(pad, h - pad - bSize); ctx.lineTo(pad, h - pad); ctx.lineTo(pad + bSize, h - pad); ctx.stroke();
-    // Bottom-right
-    ctx.beginPath(); ctx.moveTo(w - pad - bSize, h - pad); ctx.lineTo(w - pad, h - pad); ctx.lineTo(w - pad, h - pad - bSize); ctx.stroke();
-
-    // Tactical Status Text
     const status = this.currentCamera.status;
-    const isOnline = status === 'ONLINE';
-    const isStale = status === 'STALE';
-    const isOffline = status === 'OFFLINE';
 
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = 'bold 13px "JetBrains Mono", monospace';
-    if (isOnline) {
-      ctx.fillStyle = '#00e676';
-      ctx.fillText('● MOBILE RECON UPLINK: STREAMING METADATA AT 8 Hz', cx, cy - 32);
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#00e5ff';
-      const poseActive = this.meta?.mobileTelemetry?.poseEngineActive;
-      ctx.fillText(`MODEL: TF.js COCO-SSD + MOVENET LIGHTNING [${poseActive ? 'POSE ACTIVE' : 'COCO-SSD ONLY'}]`, cx, cy - 10);
-      ctx.fillStyle = '#90a4ae';
-      ctx.fillText('EDGE-FIRST DESIGN: METADATA ONLY // ZERO RAW VIDEO SENT OVER WAN', cx, cy + 12);
-      ctx.fillStyle = '#78909c';
-      ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.fillText('* IMAGE-SPACE MEASUREMENTS ONLY (UNITS: PX & NORM/S) - UNCALIBRATED *', cx, cy + 32);
-    } else if (isStale) {
-      ctx.fillStyle = '#ff7043';
-      ctx.fillText('⚠ CAM-MOBILE-01 // FEED STALE: NO DETECTIONS IN >3s', cx, cy - 30);
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#cfd8dc';
-      ctx.fillText('DISPLAY FROZEN (LAST SEEN PERSISTED) // WAITING FOR PACKETS', cx, cy - 8);
-      ctx.fillStyle = '#78909c';
-      ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.fillText('* IMAGE-SPACE MEASUREMENTS ONLY (UNITS: PX & NORM/S) - UNCALIBRATED *', cx, cy + 14);
-    } else if (isOffline) {
-      ctx.fillStyle = '#90a4ae';
-      ctx.fillText('✖ CAM-MOBILE-01 // OFFLINE: PHONE DISCONNECTED', cx, cy - 30);
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#78909c';
-      ctx.fillText('RECONNECT PHONE AT HTTPS://<LAN-IP>:3443/mobile-cam', cx, cy - 8);
-      ctx.fillText('OR REOPEN MOBILE BROWSER TAB TO RESUME STREAM', cx, cy + 14);
+    
+    // Draw camera icon circle
+    ctx.beginPath();
+    ctx.arc(cx, cy - 30, 28, 0, Math.PI * 2);
+    ctx.fillStyle = '#1c1f27';
+    ctx.fill();
+    ctx.strokeStyle = '#2a2e38';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.font = '600 14px "Inter", -apple-system, sans-serif';
+    if (status === 'ONLINE') {
+      ctx.fillStyle = '#34c759';
+      ctx.fillText('Mobile Camera Connected', cx, cy + 20);
+      ctx.font = '400 12px "Inter", sans-serif';
+      ctx.fillStyle = '#9aa0ae';
+      ctx.fillText('Streaming detections from connected device', cx, cy + 40);
+    } else if (status === 'STALE') {
+      ctx.fillStyle = '#f5a623';
+      ctx.fillText('Mobile Stream Paused', cx, cy + 20);
+      ctx.font = '400 12px "Inter", sans-serif';
+      ctx.fillStyle = '#9aa0ae';
+      ctx.fillText('Reopen phone browser to resume stream', cx, cy + 40);
     } else {
-      ctx.fillStyle = '#ffaa00';
-      ctx.fillText('◌ CAM-MOBILE-01 // STANDBY: AWAITING SMARTPHONE FEED', cx, cy - 30);
-      ctx.font = '11px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#78909c';
-      ctx.fillText('OPEN HTTPS://<LAN-IP>:3443/mobile-cam ON SMARTPHONE', cx, cy - 8);
-      ctx.fillText('OR CLICK "+ MOBILE CAM" IN TOP HEADER TO CONNECT', cx, cy + 14);
+      ctx.fillStyle = '#9aa0ae';
+      ctx.fillText('Mobile Camera Standby', cx, cy + 20);
+      ctx.font = '400 12px "Inter", sans-serif';
+      ctx.fillStyle = '#636a78';
+      ctx.fillText('Click "Mobile Camera" in the top bar to connect a smartphone', cx, cy + 40);
     }
     ctx.restore();
   }
@@ -516,26 +396,16 @@ class CanvasRenderer {
   _renderCctvWatermark(ctx, w, h) {
     const cam = this.currentCamera;
     const now = new Date();
-    const timeStr = now.toISOString().replace('T', ' ').substring(0, 19) + ' IST';
+    const timeStr = now.toLocaleTimeString('en-GB') + ' IST';
 
     ctx.save();
-    ctx.font = 'bold 12px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
-    ctx.shadowColor = 'rgba(0,0,0,0.9)';
-    ctx.shadowBlur = 4;
+    ctx.font = '500 11px "Inter", -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.9)';
+    ctx.shadowBlur = 3;
 
-    // Top left watermark
-    ctx.fillText(`[ ${cam.id} // ${cam.name.toUpperCase()} ]`, 16, 26);
-    ctx.font = '10px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(0, 229, 255, 0.8)';
-    ctx.fillText(`${cam.location} | ${cam.resolution} | FPS: ${cam.fps.toFixed(1)}`, 16, 42);
-
-    // Top right timecode
-    ctx.font = 'bold 12px "JetBrains Mono", monospace';
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-    const timeWidth = ctx.measureText(timeStr).width;
-    ctx.fillText(timeStr, w - timeWidth - 16, 26);
-
+    // Clean subtle bottom-left camera title & time
+    ctx.fillText(`${cam.id} · ${cam.name} · ${timeStr}`, 14, h - 14);
     ctx.restore();
   }
 }

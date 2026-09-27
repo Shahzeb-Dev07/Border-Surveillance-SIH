@@ -364,14 +364,20 @@ class CameraManager {
       detections: detections
     };
 
-    // Extract ONLY standard { classLabel, confidence, bbox } for tracker.js
+    // Extract standard { classLabel, confidence, bbox } for tracker.js
     cam.latestMobileDetections = detections.map(d => ({
-      classLabel: d.classLabel || 'person',
+      classLabel: d.classLabel || d.class || 'object',
       confidence: typeof d.confidence === 'number' ? d.confidence : 0.9,
       bbox: d.bbox || { x: 0, y: 0, w: 0.1, h: 0.2 }
     }));
 
-    cam.lastKnownPersonCount = cam.latestMobileDetections.length;
+    // Store live camera preview frameImage if transmitted from smartphone
+    if (metaInfo.frameImage) {
+      cam.latestFrameImage = metaInfo.frameImage;
+    }
+
+    cam.lastKnownPersonCount = cam.latestMobileDetections.filter(d => (d.classLabel || '').toLowerCase() === 'person').length;
+    cam.lastKnownObjectCount = cam.latestMobileDetections.length;
     this.latestMobileDetections = cam.latestMobileDetections;
     this.lastMobileSeen = now;
   }
@@ -563,6 +569,7 @@ class CameraManager {
         fps: c.fps,
         latencyMs: c.latencyMs,
         status: c.status,
+        frameImage: c.latestFrameImage || null,
         activeDetections: c.activeDetections || [],
         meta: c.currentMeta || {}
       })),

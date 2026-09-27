@@ -34,6 +34,29 @@ document.addEventListener('DOMContentLoaded', () => {
     switchCamera(camId);
   });
 
+  // Sidebar Tabs (Cameras vs Sector Map)
+  const tabCamerasBtn = document.getElementById('tabCamerasBtn');
+  const tabMapBtn = document.getElementById('tabMapBtn');
+  const gisMapPanel = document.getElementById('gisMapPanel');
+
+  if (tabCamerasBtn && tabMapBtn) {
+    tabCamerasBtn.addEventListener('click', () => {
+      tabCamerasBtn.classList.add('active');
+      tabMapBtn.classList.remove('active');
+      if (cameraListContainer) cameraListContainer.style.display = 'flex';
+      if (gisMapPanel) gisMapPanel.style.display = 'none';
+    });
+    tabMapBtn.addEventListener('click', () => {
+      tabMapBtn.classList.add('active');
+      tabCamerasBtn.classList.remove('active');
+      if (cameraListContainer) cameraListContainer.style.display = 'none';
+      if (gisMapPanel) {
+        gisMapPanel.style.display = 'block';
+        gisMap.updateData(cameras, activeCameraId, events);
+      }
+    });
+  }
+
   // Initialize Interactive Zone Drawing Tool
   const zoneDrawingTool = new ZoneDrawingTool(canvasRenderer, async (newZone) => {
     if (!zonesMap[activeCameraId]) {
@@ -117,6 +140,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!wanConnected) {
         window.tacticalAudio.playAlertPing('CRITICAL');
       }
+    } else if (msg.type === 'FOCUS_CAMERA') {
+      if (msg.data && msg.data.cameraId) {
+        switchCamera(msg.data.cameraId);
+      }
     }
   }
 
@@ -133,6 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const feedLocation = document.getElementById('currentFeedLocation');
     const hudBadgeIr = document.getElementById('hudBadgeIr');
     const hudBadgeChoke = document.getElementById('hudBadgeChoke');
+    const liveFeedBadge = document.getElementById('liveFeedBadge');
+    const btnSwitchCenterToPhone = document.getElementById('btnSwitchCenterToPhone');
+    const btnSwitchCenterToPhoneText = document.getElementById('btnSwitchCenterToPhoneText');
+    const canvasCrosshairOverlay = document.getElementById('canvasCrosshairOverlay');
 
     if (feedTitle) feedTitle.textContent = `${cam.id} — ${cam.name}`;
     if (feedLocation) feedLocation.textContent = `${cam.bop} // ${cam.location}`;
@@ -142,6 +173,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (hudBadgeChoke) {
       hudBadgeChoke.style.display = cam.capabilities && cam.capabilities.anpr ? 'flex' : 'none';
+    }
+
+    // Dynamic Live Rec / Sensor Badge
+    if (liveFeedBadge) {
+      if (cam.id === 'CAM-MOBILE-01') {
+        const isOnline = cam.status === 'ONLINE';
+        const color = isOnline ? 'var(--accent-green)' : (cam.status === 'STALE' ? 'var(--accent-amber)' : '#90a4ae');
+        const text = isOnline ? 'SMARTPHONE LIVE SENSOR' : (cam.status === 'STALE' ? 'PHONE STREAM STALE' : 'PHONE SENSOR STANDBY');
+        liveFeedBadge.innerHTML = `<span class="live-rec-dot" style="background:${color}"></span> ${text}`;
+      } else {
+        liveFeedBadge.innerHTML = `<span class="live-rec-dot"></span> SIMULATED FEED`;
+      }
+    }
+
+    // Switch to Phone Button State
+    if (btnSwitchCenterToPhone) {
+      if (activeCameraId === 'CAM-MOBILE-01') {
+        btnSwitchCenterToPhone.style.borderColor = 'var(--accent-green)';
+        btnSwitchCenterToPhone.style.color = 'var(--accent-green)';
+        btnSwitchCenterToPhone.style.background = 'rgba(0, 230, 118, 0.12)';
+        if (btnSwitchCenterToPhoneText) btnSwitchCenterToPhoneText.textContent = '✓ Phone Active in Centre';
+      } else {
+        btnSwitchCenterToPhone.style.borderColor = 'var(--accent-amber)';
+        btnSwitchCenterToPhone.style.color = 'var(--accent-amber)';
+        btnSwitchCenterToPhone.style.background = '';
+        if (btnSwitchCenterToPhoneText) btnSwitchCenterToPhoneText.textContent = '📱 Use Phone Camera in Centre';
+      }
+    }
+
+    // Crosshair overlay HUD text (kept empty for clean professional view)
+    if (canvasCrosshairOverlay) {
+      canvasCrosshairOverlay.innerHTML = '';
     }
   }
 
@@ -155,6 +218,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!cameraListContainer) return;
     cameraListContainer.innerHTML = '';
 
+    const tabCamCount = document.getElementById('tabCamCount');
+    if (tabCamCount) tabCamCount.textContent = cameras.length;
+
     cameras.forEach(cam => {
       const card = document.createElement('div');
       card.className = `camera-card ${cam.id === activeCameraId ? 'active' : ''}`;
@@ -162,107 +228,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const hasAlert = events.some(e => e.camera_id === cam.id && e.system_status === 'ACTIVE');
       const isMobileCam = cam.isMobile || cam.id === 'CAM-MOBILE-01';
+      const isOnline = cam.status === 'ONLINE';
 
-      // Telemetry fields for mobile camera
-      let mobileTelemetryHtml = '';
+      let statusLabel = isOnline ? 'Online' : (cam.status === 'STALE' ? 'Paused' : 'Offline');
+      let statusClass = isOnline ? 'online' : (cam.status === 'STALE' ? 'stale' : 'offline');
+
+      let mobileNotice = '';
       if (isMobileCam) {
-        const status = cam.status || 'WAITING';
-        const meta = cam.meta || {};
-        const activeDets = (cam.activeDetections || []).filter(d => (d.classLabel || d.class || '').toLowerCase() === 'person');
-        const lastRx = meta.lastReceivedAt || 0;
-        const ageSec = lastRx > 0 ? Math.max(0, ((Date.now() - lastRx) / 1000)).toFixed(1) : null;
-        const ageStr = ageSec !== null ? `${ageSec}s ago` : 'Never';
-        const poseActive = !!(meta.mobileTelemetry && meta.mobileTelemetry.poseEngineActive);
-
-        if (status === 'ONLINE') {
-          const personCount = activeDets.length;
-          const trackRows = activeDets.map(obj => {
-            const trackId = obj.trackId || 'TRK-?';
-            const m = obj.movement || {};
-            const dir = m.direction || 'STATIONARY';
-            const speed = typeof m.speedEstimate === 'number' ? ` (${m.speedEstimate.toFixed(2)} norm/s)` : '';
-            return `
-              <div style="display:flex;justify-content:space-between;align-items:center;font-size:9px">
-                <span style="color:#fff">Track ID: <strong style="color:var(--accent-cyan)">${trackId}</strong></span>
-                <span style="color:${dir !== 'STATIONARY' ? 'var(--accent-amber)' : 'var(--text-muted)'}">
-                  ${dir}${speed}
-                </span>
-              </div>
-            `;
-          }).join('');
-
-          mobileTelemetryHtml = `
-            <div style="margin-top:6px;padding:6px 8px;background:rgba(0,0,0,0.4);border-radius:4px;border:1px solid rgba(0,229,255,0.2);font-family:var(--font-mono)">
-              <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:3px">
-                <span style="color:var(--text-muted)">Persons: <strong style="color:var(--accent-green)">${personCount}</strong></span>
-                <span style="color:var(--text-muted)">Age: <strong style="color:var(--accent-cyan)">${ageStr}</strong></span>
-              </div>
-              <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-bottom:4px">
-                <span>SENSOR: <strong style="color:var(--accent-green)">COCO-SSD</strong></span>
-                <span style="font-size:8px;color:var(--text-dim)">UNITS: PX &amp; NORM/S</span>
-              </div>
-              ${trackRows ? `<div style="display:flex;flex-direction:column;gap:2px;border-top:1px solid rgba(255,255,255,0.06);padding-top:3px">${trackRows}</div>` : ''}
-            </div>
-          `;
-        } else if (status === 'STALE') {
-          const frozenCount = meta.lastKnownPersonCount !== undefined ? meta.lastKnownPersonCount : activeDets.length;
-          mobileTelemetryHtml = `
-            <div style="margin-top:6px;padding:6px 8px;background:rgba(255,112,67,0.08);border-radius:4px;border:1px solid rgba(255,112,67,0.3);font-family:var(--font-mono)">
-              <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px">
-                <span style="color:var(--text-muted)">Persons (last seen): <strong style="color:var(--text-dim)">${frozenCount}</strong></span>
-                <span style="color:var(--text-muted)">Age: <strong style="color:#ff7043">${ageStr}</strong></span>
-              </div>
-              <div style="font-size:9px;color:#ff7043">[STALE - Telemetry Frozen]</div>
-            </div>
-          `;
-        } else if (status === 'OFFLINE') {
-          const frozenCount = meta.lastKnownPersonCount !== undefined ? meta.lastKnownPersonCount : 0;
-          mobileTelemetryHtml = `
-            <div style="margin-top:6px;padding:6px 8px;background:rgba(144,164,174,0.08);border-radius:4px;border:1px solid rgba(144,164,174,0.25);font-family:var(--font-mono)">
-              <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:2px">
-                <span style="color:var(--text-muted)">Persons (last seen): <strong style="color:var(--text-dim)">${frozenCount}</strong></span>
-                <span style="color:var(--text-dim)">OFFLINE</span>
-              </div>
-              <div style="font-size:9px;color:#90a4ae">[DISCONNECTED]</div>
-            </div>
-          `;
+        if (isOnline) {
+          const count = (cam.activeDetections || []).length;
+          mobileNotice = `<div class="cam-sub-meta online">Streaming live from mobile (${count} objects detected)</div>`;
         } else {
-          // WAITING
-          mobileTelemetryHtml = `
-            <div style="margin-top:6px;padding:5px 8px;background:rgba(255,179,0,0.06);border-radius:4px;border:1px solid rgba(255,179,0,0.2);font-family:var(--font-mono);font-size:9px;color:var(--text-dim)">
-              [WAITING - Awaiting Phone Feed]
-            </div>
-          `;
+          mobileNotice = `<div class="cam-sub-meta text-muted">Smartphone standby (Tap to connect)</div>`;
         }
       }
 
       card.innerHTML = `
         <div class="cam-card-top">
-          <span class="cam-id">${cam.id}</span>
-          <span class="cam-status-pill ${cam.status.toLowerCase()}">${cam.status}</span>
+          <div class="cam-title-group">
+            <span class="cam-name">${cam.name}</span>
+            <span class="cam-id">${cam.id}</span>
+          </div>
+          <div class="cam-status-indicator ${statusClass}">
+            <span class="cam-dot"></span>
+            <span>${statusLabel}</span>
+          </div>
         </div>
-        <div class="cam-name">${cam.name}</div>
         <div class="cam-location">${cam.location}</div>
-        <div class="cam-caps">
-          <span class="cap-tag active">${cam.resolution.split('@')[1] || '8fps'}</span>
-          <span class="cap-tag active">V-FENCE</span>
-          ${isMobileCam ? '<span class="cap-tag" style="background:rgba(0,229,255,0.15);color:var(--accent-cyan);border-color:rgba(0,229,255,0.4)">SMARTPHONE LIVE</span>' : ''}
-          ${cam.capabilities && cam.capabilities.anpr ? '<span class="cap-tag anpr">ANPR CHOKE</span>' : ''}
-          ${cam.mode === 'NIGHT_IR_ILLUMINATED' ? '<span class="cap-tag active" style="color:#00e676;border-color:rgba(0,230,118,0.3)">NIGHT IR</span>' : ''}
-          ${hasAlert ? '<span class="cap-tag" style="background:#ff3d71;color:#fff;font-weight:700">ALERT</span>' : ''}
-        </div>
-        ${mobileTelemetryHtml}
+        ${hasAlert ? `<div class="cam-alert-flag"><span class="pulse-dot"></span> Active Incident</div>` : ''}
+        ${mobileNotice}
       `;
       cameraListContainer.appendChild(card);
     });
   }
 
   // --- ANTI-FLOODING ALERT IN-PLACE UPDATER & ALARM BUFFER ---
-  function handleIncomingAlerts(incoming) {
-    let hasNewCritical = false;
-    let hasActiveCritical = false;
-    let activeCameraName = '';
+  let isSirenActive = false;
 
+  function handleIncomingAlerts(incoming) {
+    let newCriticalCameraName = '';
+
+    // 1. Merge incoming events into local state
     incoming.forEach(incEvt => {
       const idx = events.findIndex(e => e.event_id === incEvt.event_id);
       if (idx >= 0) {
@@ -271,41 +277,47 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // Prepend new event
         events.unshift(incEvt);
-        if (incEvt.severity === 'CRITICAL' || incEvt.severity === 'HIGH') {
-          hasNewCritical = true;
-          activeCameraName = incEvt.camera_name || incEvt.camera_id;
-        }
-      }
-
-      if (incEvt.system_status === 'ACTIVE') {
-        hasActiveCritical = true;
-        if (!activeCameraName) {
-          activeCameraName = incEvt.camera_name || incEvt.camera_id;
+        // Fire alert ping exactly once per new critical/high event
+        if ((incEvt.severity === 'CRITICAL' || incEvt.severity === 'HIGH') && incEvt.system_status === 'ACTIVE') {
+          window.tacticalAudio.playAlertPing('CRITICAL');
+          newCriticalCameraName = incEvt.camera_name || incEvt.camera_id;
         }
       }
     });
 
-    if (hasNewCritical) {
-      window.tacticalAudio.playAlertPing('CRITICAL');
+    // 2. Derive alarm state from the FULL current events array (not just incoming batch)
+    const qualifying = events.filter(e =>
+      e.system_status === 'ACTIVE' &&
+      (e.severity === 'CRITICAL' || e.severity === 'HIGH')
+    );
+
+    if (qualifying.length > 0 && !isSirenActive) {
+      // Transition: no alarm -> alarm
       window.tacticalAudio.startSiren();
+      isSirenActive = true;
+      console.log('[AUDIO] SIREN START');
+      const displayName = newCriticalCameraName || qualifying[0].camera_name || qualifying[0].camera_id;
       if (alarmBanner) {
         alarmBanner.classList.remove('hidden');
-        document.getElementById('alarmSirenText').textContent = `CRITICAL PERIMETER BREACH DETECTED AT ${activeCameraName.toUpperCase()}!`;
+        document.getElementById('alarmSirenText').textContent = `CRITICAL PERIMETER BREACH DETECTED AT ${displayName.toUpperCase()}!`;
       }
-    } else if (hasActiveCritical) {
-      // Alarm buffer: active breach continues to play/escalate
+    } else if (qualifying.length > 0 && isSirenActive) {
+      // Alarm continues — update banner text if needed, but don't restart siren
       if (alarmBanner && alarmBanner.classList.contains('hidden')) {
         alarmBanner.classList.remove('hidden');
-        document.getElementById('alarmSirenText').textContent = `ACTIVE ALERT ON ${activeCameraName.toUpperCase()}!`;
       }
-    } else {
-      // Clear siren if all active alerts have cleared
-      const anyStillActive = events.some(e => e.system_status === 'ACTIVE' && e.severity === 'CRITICAL');
-      if (!anyStillActive) {
-        window.tacticalAudio.stopSiren();
-        if (alarmBanner) {
-          alarmBanner.classList.add('hidden');
-        }
+    } else if (qualifying.length === 0 && isSirenActive) {
+      // Transition: alarm -> no alarm (all incidents resolved)
+      window.tacticalAudio.stopSiren();
+      isSirenActive = false;
+      console.log('[AUDIO] SIREN STOP');
+      if (alarmBanner) {
+        alarmBanner.classList.add('hidden');
+      }
+    } else if (qualifying.length === 0 && !isSirenActive) {
+      // No alarm, no qualifying events — ensure banner is hidden
+      if (alarmBanner && !alarmBanner.classList.contains('hidden')) {
+        alarmBanner.classList.add('hidden');
       }
     }
 
@@ -329,8 +341,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (filtered.length === 0) {
       alertStreamContainer.innerHTML = `
-        <div style="padding: 30px 10px; text-align: center; color: var(--text-dim); font-family: var(--font-mono)">
-          NO ALERTS UNDER CURRENT FILTER (${activeFilter})
+        <div style="padding: 30px 10px; text-align: center; color: var(--text-tertiary); font-size: 13px;">
+          No incidents under current filter (${activeFilter.toLowerCase()})
         </div>
       `;
       return;
@@ -345,14 +357,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const isActive = evt.system_status === 'ACTIVE';
       const durationBadge = isActive 
-        ? `<div class="duration-live-badge pulsing"><span class="pulse-dot"></span> LIVE: ${evt.duration_sec || 1}s</div>`
-        : `<div class="duration-live-badge">ENDED (${evt.duration_sec || 1}s)</div>`;
+        ? `<div class="duration-live-badge pulsing"><span class="pulse-dot"></span> Live (${evt.duration_sec || 1}s)</div>`
+        : `<div class="duration-live-badge">Resolved</div>`;
 
-      const conf = evt.confidence_breakdown || {};
       const anprCallout = evt.plate_text ? `
-        <div class="anpr-callout">
-          <span class="anpr-plate-text">${evt.plate_text}</span>
-          <div class="anpr-conf-note">OCR CONF: ${Math.round((evt.plate_confidence || 0.85)*100)}% (Simulated Choke Point OCR)</div>
+        <div class="anpr-plate-pill">
+          <span>License Plate:</span>
+          <strong>${evt.plate_text}</strong>
         </div>
       ` : '';
 
@@ -364,33 +375,19 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="alert-title">${evt.rule_name || evt.event_type}</div>
         <div class="alert-meta-row">
           <span>${evt.camera_id}</span>
-          <span>•</span>
+          <span>·</span>
           <span>${evt.location}</span>
-          <span>•</span>
+          <span>·</span>
           <span>${new Date(evt.timestamp).toLocaleTimeString('en-GB')}</span>
         </div>
         <div class="alert-details">${evt.details}</div>
         ${anprCallout}
-        <div class="confidence-matrix">
-          <div class="conf-item">
-            <span>DETECTION</span>
-            <span>${Math.round((conf.detectionConfidence || evt.confidence || 0.9) * 100)}%</span>
-          </div>
-          <div class="conf-item">
-            <span>CLASSIFICATION</span>
-            <span>${Math.round((conf.classificationConfidence || 0.88) * 100)}%</span>
-          </div>
-          <div class="conf-item">
-            <span>RULE MATCH</span>
-            <span>${Math.round((conf.ruleConfidence || 0.98) * 100)}%</span>
-          </div>
-        </div>
         <div class="alert-actions-row">
           ${evt.operator_status === 'UNACKNOWLEDGED' ? `
-            <button class="alert-action-btn" onclick="window.handleAlertAction('${evt.event_id}', 'ACKNOWLEDGE')">Acknowledge</button>
-            <button class="alert-action-btn btn-qrt" onclick="window.handleAlertAction('${evt.event_id}', 'DISPATCH_QRT')">Dispatch QRT</button>
+            <button class="alert-action-btn primary" onclick="window.handleAlertAction('${evt.event_id}', 'ACKNOWLEDGE')">Acknowledge</button>
+            ${evt.severity === 'CRITICAL' ? `<button class="alert-action-btn btn-qrt" onclick="window.handleAlertAction('${evt.event_id}', 'DISPATCH_QRT')">Dispatch QRT</button>` : ''}
           ` : `
-            <span style="font-family:var(--font-mono);font-size:10px;color:var(--accent-green);padding:4px">STATUS: ${evt.operator_status}</span>
+            <span class="alert-status-resolved">✓ ${evt.operator_status}</span>
           `}
           <button class="alert-action-btn" onclick="window.inspectEvidence('${evt.event_id}')">Evidence</button>
         </div>
@@ -867,8 +864,25 @@ document.addEventListener('DOMContentLoaded', () => {
       mobileCamDialog?.showModal();
     } catch (err) {
       console.error('[MOBILE-CAM] Failed to fetch endpoint info:', err);
-      if (modalLanIp) modalLanIp.textContent = window.location.hostname;
-      if (modalMobileUrl) modalMobileUrl.textContent = `https://${window.location.hostname}:3443/mobile-cam`;
+      const fallbackHost = window.location.hostname || '10.159.203.55';
+      const fallbackUrl = `https://${fallbackHost}:3443/mobile-cam`;
+      currentMobileUrl = fallbackUrl;
+      if (modalLanIp) modalLanIp.textContent = fallbackHost;
+      if (modalMobileUrl) modalMobileUrl.textContent = fallbackUrl;
+      if (mobileCamHttpsWarning) mobileCamHttpsWarning.style.display = 'none';
+      if (mobileCamConnectFlow) mobileCamConnectFlow.style.display = 'block';
+      if (mobileCamQrCode && typeof QRCode !== 'undefined') {
+        mobileCamQrCode.innerHTML = '';
+        new QRCode(mobileCamQrCode, {
+          text: fallbackUrl,
+          width: 140,
+          height: 140,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      }
+      updateMobileCamModalStatus();
       mobileCamDialog?.showModal();
     }
   });
@@ -902,6 +916,27 @@ document.addEventListener('DOMContentLoaded', () => {
   btnOpenMobilePreview?.addEventListener('click', () => {
     if (currentMobileUrl) {
       window.open(currentMobileUrl, '_blank');
+    }
+  });
+
+  // Set Phone in Center button inside modal
+  const btnModalSetPhoneCenter = document.getElementById('btnModalSetPhoneCenter');
+  btnModalSetPhoneCenter?.addEventListener('click', () => {
+    switchCamera('CAM-MOBILE-01');
+    mobileCamDialog?.close();
+  });
+
+  // Switch Center to Phone button in main viewport header
+  const btnSwitchCenterToPhone = document.getElementById('btnSwitchCenterToPhone');
+  btnSwitchCenterToPhone?.addEventListener('click', () => {
+    if (activeCameraId === 'CAM-MOBILE-01') {
+      switchCamera('CAM-01');
+    } else {
+      switchCamera('CAM-MOBILE-01');
+      const mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+      if (!mobileCam || mobileCam.status !== 'ONLINE') {
+        btnOpenMobileCamModal?.click();
+      }
     }
   });
 

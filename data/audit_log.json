@@ -1,6 +1,56 @@
 [
   {
     "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T16:27:07.202Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "4d197ea7377ab5bc"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T15:56:25.951Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "fee7fde1a80f266c"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T15:50:09.070Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "8e2c04881626a491"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T15:34:21.412Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "2a656fb6d10fb5b8"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
+    "timestamp": "2026-09-27T13:51:19.362Z",
+    "action": "VERIFY_TEST_RUN",
+    "camera_id": "CAM-01",
+    "incident_id": "TEST-INCIDENT-001",
+    "result": "SUCCESS",
+    "notes": "",
+    "checksum": "d9c926b2345114e6"
+  },
+  {
+    "user_id": "CI-TEST-BOT",
     "timestamp": "2026-09-27T13:02:47.098Z",
     "action": "VERIFY_TEST_RUN",
     "camera_id": "CAM-01",

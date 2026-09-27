@@ -113,25 +113,12 @@ class TacticalGisMap {
     ctx.stroke();
     ctx.restore();
 
-    // Radar Sweep from BOP-14 Main Tower
+    // Static Coverage Boundary
     const center = { x: w * 0.35, y: h * 0.62 };
-    this.radarAngle += 0.025;
-    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(center.x, center.y, 70, this.radarAngle, this.radarAngle + 0.5);
-    ctx.lineTo(center.x, center.y);
-    const grad = ctx.createRadialGradient(center.x, center.y, 0, center.x, center.y, 70);
-    grad.addColorStop(0, 'rgba(0, 229, 255, 0.25)');
-    grad.addColorStop(1, 'rgba(0, 229, 255, 0)');
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-
-    // Concentric Range Rings
-    ctx.strokeStyle = 'rgba(0, 229, 255, 0.12)';
-    ctx.beginPath();
-    ctx.arc(center.x, center.y, 40, 0, Math.PI * 2);
-    ctx.arc(center.x, center.y, 75, 0, Math.PI * 2);
+    ctx.arc(center.x, center.y, 50, 0, Math.PI * 2);
     ctx.stroke();
 
     // Render Camera Nodes
@@ -145,45 +132,32 @@ class TacticalGisMap {
       const hasHigh = this.activeAlerts.some(a => a.camera_id === node.id && a.severity === 'HIGH' && a.system_status === 'ACTIVE');
 
       if (hasCritical) {
-        // Pulsing threat ring
-        const pulse = (Date.now() / 400) % 2;
         ctx.beginPath();
-        ctx.arc(nx, ny, 10 + pulse * 12, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255, 61, 113, ${1 - pulse * 0.4})`;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      } else if (hasHigh) {
-        const pulse = (Date.now() / 500) % 2;
-        ctx.beginPath();
-        ctx.arc(nx, ny, 8 + pulse * 8, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255, 179, 0, ${1 - pulse * 0.4})`;
+        ctx.arc(nx, ny, 10, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(231, 76, 94, 0.6)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
 
       // Outer Selection Ring
       if (isSelected) {
-        ctx.strokeStyle = '#00e5ff';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#5b8af5';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(nx, ny, 12, 0, Math.PI * 2);
+        ctx.arc(nx, ny, 9, 0, Math.PI * 2);
         ctx.stroke();
       }
 
       // Node Icon Point
-      ctx.fillStyle = hasCritical ? '#ff3d71' : (hasHigh ? '#ffb300' : (isSelected ? '#00e5ff' : '#00e676'));
+      ctx.fillStyle = hasCritical ? '#e74c5e' : (hasHigh ? '#f5a623' : (isSelected ? '#5b8af5' : '#34c759'));
       ctx.beginPath();
-      ctx.arc(nx, ny, 5, 0, Math.PI * 2);
+      ctx.arc(nx, ny, 4.5, 0, Math.PI * 2);
       ctx.fill();
 
       // Node Labels
-      ctx.font = '10px "Inter", sans-serif';
-      ctx.fillStyle = isSelected ? '#fff' : '#a0b0c0';
-      ctx.fillText(`${node.id}: ${node.name}`, nx + 10, ny - 2);
-
-      ctx.font = '8px "JetBrains Mono", monospace';
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.6)';
-      ctx.fillText(node.bop, nx + 10, ny + 9);
+      ctx.font = '500 11px "Inter", sans-serif';
+      ctx.fillStyle = isSelected ? '#ffffff' : '#9aa0ae';
+      ctx.fillText(`${node.id} · ${node.name}`, nx + 10, ny + 3);
     }
   }
 }

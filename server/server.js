@@ -93,6 +93,7 @@ function broadcastCameraUpdate() {
         fps: c.fps,
         latencyMs: c.latencyMs,
         status: c.status,
+        frameImage: c.latestFrameImage || null,
         activeDetections: c.activeDetections || [],
         meta: c.currentMeta || {}
       })),
@@ -164,10 +165,14 @@ function handleWsConnection(ws, req, isSecure = false) {
 
         console.log('[MOBILE] Detection received');
         console.log(`[MOBILE] Camera: ${cameraId}`);
-        console.log(`[MOBILE] Persons: ${detections.length}`);
-        console.log(`[MOBILE] Confidence: ${confPct}%`);
-
         cameraManager.ingestMobileDetections(cameraId, detections, msg);
+      } else if (msg.type === 'MOBILE_REQUEST_FOCUS') {
+        const cameraId = msg.cameraId || 'CAM-MOBILE-01';
+        console.log(`[MOBILE] Requested center viewport focus: ${cameraId}`);
+        broadcast({
+          type: 'FOCUS_CAMERA',
+          data: { cameraId }
+        });
       }
     } catch (err) {
       console.error('[WS] Message error:', err.message);

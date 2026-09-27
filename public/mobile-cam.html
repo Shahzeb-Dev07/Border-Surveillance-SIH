@@ -346,6 +346,27 @@
     .debug-row span {
       color: var(--cyan);
     }
+    /* Viewfinder Tactical Corner Brackets (inspired by advanced-android-camera) */
+    .viewfinder-corners {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      bottom: 220px;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .vf-corner {
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      border-color: rgba(0, 229, 255, 0.65);
+      border-style: solid;
+    }
+    .vf-tl { top: 0; left: 0; border-width: 2.5px 0 0 2.5px; }
+    .vf-tr { top: 0; right: 0; border-width: 2.5px 2.5px 0 0; }
+    .vf-bl { bottom: 0; left: 0; border-width: 0 0 2.5px 2.5px; }
+    .vf-br { bottom: 0; right: 0; border-width: 0 2.5px 2.5px 0; }
   </style>
 
   <!-- Pinned versions of TensorFlow.js, COCO-SSD, and MoveNet Pose-Detection -->
@@ -362,7 +383,13 @@
       <canvas id="detectionCanvas"></canvas>
     </div>
 
-    <!-- Center Reticle -->
+    <!-- Center Reticle & Viewfinder Corners (advanced-android-camera style) -->
+    <div class="viewfinder-corners">
+      <div class="vf-corner vf-tl"></div>
+      <div class="vf-corner vf-tr"></div>
+      <div class="vf-corner vf-bl"></div>
+      <div class="vf-corner vf-br"></div>
+    </div>
     <div class="tactical-reticle"></div>
 
     <!-- Top HUD & Error Banner -->
@@ -377,7 +404,7 @@
           <span class="header-id">CAM-MOBILE-01</span>
           <span style="font-size:9px;color:var(--text-muted);margin-left:6px;">TACTICAL RECON</span>
         </div>
-        <div class="header-tag" id="aiPipelineBadge">COCO-SSD + MOVENET</div>
+        <div class="header-tag" id="aiPipelineBadge">ALL OBJECTS + MOVENET</div>
       </div>
     </div>
 
@@ -411,7 +438,7 @@
           </div>
 
           <div class="status-item">
-            <span class="status-label">Persons Detected</span>
+            <span class="status-label">Objects Tracked</span>
             <span class="status-val" style="color:var(--cyan)" id="statPersonCount">0</span>
           </div>
 
@@ -430,7 +457,7 @@
         </div>
       </div>
 
-      <!-- Controls Row -->
+      <!-- Controls Row 1 -->
       <div class="action-row">
         <button class="btn-ctrl" id="btnToggleCamera" type="button" title="Start or stop camera sensor">
           Stop Cam
@@ -446,15 +473,31 @@
         </button>
       </div>
 
-      <!-- Per-Person Live Telemetry Tray -->
+      <!-- Controls Row 2: Advanced Android Camera Features -->
+      <div class="action-row" style="margin-top:2px">
+        <button class="btn-ctrl" id="btnToggleZoom" type="button" title="Cycle Zoom (1.0x, 2.0x, 3.0x)">
+          🔍 1.0x
+        </button>
+        <button class="btn-ctrl off" id="btnToggleTorch" type="button" title="Toggle Camera Flash / Torch">
+          ⚡ Flash: OFF
+        </button>
+        <button class="btn-ctrl" id="btnToggleDetectFilter" type="button" title="Filter detection mode (All Objects vs Persons)">
+          🎯 ALL OBJS
+        </button>
+        <button class="btn-ctrl" id="btnSyncCenter" type="button" title="Switch C2 Dashboard focal center to this camera">
+          📱 In Centre
+        </button>
+      </div>
+
+      <!-- Live Objects & Movement Telemetry Tray -->
       <div class="telemetry-tray">
         <div class="telemetry-tray-header">
-          <span>PER-PERSON MOVEMENT & MEASUREMENT TELEMETRY</span>
+          <span>DETECTED OBJECTS & MOVEMENT TELEMETRY</span>
           <span id="telemetryTrayCount">0 TRACKED</span>
         </div>
         <div id="personsTelemetryList">
           <div style="text-align:center;padding:12px;color:var(--text-dim)">
-            NO PERSONS IN FRAME — SENSOR IDLE
+            NO OBJECTS IN FRAME — SENSOR IDLE
           </div>
         </div>
       </div>
@@ -492,6 +535,10 @@
       const btnSwitchCam = document.getElementById('btnSwitchCam');
       const btnTogglePose = document.getElementById('btnTogglePose');
       const btnToggleOverlay = document.getElementById('btnToggleOverlay');
+      const btnToggleZoom = document.getElementById('btnToggleZoom');
+      const btnToggleTorch = document.getElementById('btnToggleTorch');
+      const btnToggleDetectFilter = document.getElementById('btnToggleDetectFilter');
+      const btnSyncCenter = document.getElementById('btnSyncCenter');
 
       const personsTelemetryList = document.getElementById('personsTelemetryList');
       const telemetryTrayCount = document.getElementById('telemetryTrayCount');
@@ -513,6 +560,17 @@
       let ws = null;
       let reconnectTimer = null;
       let reconnectDelay = 2000;
+
+      // Tactical Zoom, Flash & Detection Filter States (inspired by advanced-android-camera)
+      let currentZoom = 1.0;
+      let torchOn = false;
+      let detectFilterMode = 'all'; // 'all' (all COCO-SSD objects) or 'person'
+
+      // Offscreen preview canvas for lightweight video streaming to C2 dashboard center
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width = 480;
+      previewCanvas.height = 270;
+      const previewCtx = previewCanvas.getContext('2d');
 
       // Local client-side tracking state (grouping label only; server assigns persistent trackId)
       let localTracks = new Map(); // localId -> trackState
@@ -703,6 +761,79 @@
         }
       });
 
+      // Tactical Zoom Bar (Cycle: 1.0x -> 2.0x -> 3.0x -> 1.0x) - advanced-android-camera style
+      async function cycleZoom() {
+        const nextZoom = (currentZoom === 1.0) ? 2.0 : (currentZoom === 2.0 ? 3.0 : 1.0);
+        currentZoom = nextZoom;
+        const track = currentStream && currentStream.getVideoTracks()[0];
+        if (track) {
+          try {
+            const caps = track.getCapabilities ? track.getCapabilities() : {};
+            if (caps.zoom) {
+              await track.applyConstraints({ advanced: [{ zoom: Math.min(caps.zoom.max || 5, Math.max(caps.zoom.min || 1, nextZoom)) }] });
+            }
+          } catch (e) {
+            console.log('[MOBILE-CAM] Hardware zoom not supported:', e.message);
+          }
+        }
+        // Digital CSS zoom fallback ensuring full compatibility across all mobile browsers
+        video.style.transform = `scale(${nextZoom})`;
+        video.style.transformOrigin = 'center center';
+        video.style.transition = 'transform 0.25s ease-out';
+        if (btnToggleZoom) btnToggleZoom.textContent = `🔍 ${nextZoom.toFixed(1)}x`;
+      }
+      btnToggleZoom?.addEventListener('click', cycleZoom);
+
+      // Flash / Torch Control
+      async function toggleTorch() {
+        const track = currentStream && currentStream.getVideoTracks()[0];
+        if (!track) return;
+        try {
+          torchOn = !torchOn;
+          await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+          if (btnToggleTorch) {
+            btnToggleTorch.textContent = torchOn ? '⚡ Flash: ON' : '⚡ Flash: OFF';
+            btnToggleTorch.classList.toggle('off', !torchOn);
+            btnToggleTorch.classList.toggle('warn', torchOn);
+          }
+        } catch (e) {
+          torchOn = false;
+          if (btnToggleTorch) {
+            btnToggleTorch.textContent = '⚡ Flash: N/A';
+            btnToggleTorch.classList.add('off');
+          }
+          console.warn('[MOBILE-CAM] Torch not supported:', e.message);
+        }
+      }
+      btnToggleTorch?.addEventListener('click', toggleTorch);
+
+      // Detection Filter Mode (All Objects vs Persons Only)
+      btnToggleDetectFilter?.addEventListener('click', () => {
+        detectFilterMode = (detectFilterMode === 'all') ? 'person' : 'all';
+        btnToggleDetectFilter.textContent = (detectFilterMode === 'all') ? '🎯 ALL OBJS' : '🎯 PERSONS';
+        btnToggleDetectFilter.classList.toggle('off', detectFilterMode === 'person');
+        if (aiPipelineBadge) {
+          aiPipelineBadge.textContent = (detectFilterMode === 'all') ? 'ALL OBJECTS + MOVENET' : 'PERSON ONLY + MOVENET';
+        }
+      });
+
+      // Sync To Dashboard Center Focal Viewport
+      btnSyncCenter?.addEventListener('click', () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'MOBILE_REQUEST_FOCUS',
+            cameraId: 'CAM-MOBILE-01',
+            timestamp: Date.now()
+          }));
+        }
+        btnSyncCenter.textContent = '✓ In Centre';
+        btnSyncCenter.style.borderColor = 'var(--green)';
+        setTimeout(() => {
+          btnSyncCenter.textContent = '📱 In Centre';
+          btnSyncCenter.style.borderColor = '';
+        }, 2500);
+      });
+
       let heartbeatTimer = null;
 
       function sendHeartbeat() {
@@ -837,13 +968,18 @@
             const actualH = video.videoHeight;
             const now = Date.now();
 
-            // Run COCO-SSD person detection
+            // Run COCO-SSD multi-object detection (detect all objects or filtered by mode)
             const preds = await cocoModel.detect(video);
-            const persons = preds.filter(p => p.class === 'person');
+            const filteredPreds = (preds || []).filter(p => {
+              if ((p.score || 0) < 0.35) return false;
+              if (detectFilterMode === 'person') return p.class === 'person';
+              return true;
+            });
 
-            // Run MoveNet MultiPose estimation if active and available
+            // Run MoveNet MultiPose estimation only if persons exist and pose is active
             let poses = [];
-            const poseActive = poseEnabled && poseReady && poseDetector;
+            const hasPerson = filteredPreds.some(p => p.class === 'person');
+            const poseActive = poseEnabled && poseReady && poseDetector && hasPerson;
             if (poseActive) {
               try {
                 poses = await poseDetector.estimatePoses(video);
@@ -857,7 +993,8 @@
             const currentDetections = [];
             const matchedLocalIds = new Set();
 
-            persons.forEach(p => {
+            filteredPreds.forEach(p => {
+              const isPerson = p.class === 'person';
               const rawBbox = {
                 x: Number((p.bbox[0] / actualW).toFixed(4)),
                 y: Number((p.bbox[1] / actualH).toFixed(4)),
@@ -869,12 +1006,13 @@
                 y: rawBbox.y + rawBbox.h / 2
               };
 
-              // Local Association to Previous Tracks by Nearest Centroid
+              // Local Association to Previous Tracks by Nearest Centroid & Class
               let bestTrackId = null;
-              let bestDist = 0.22; // Normalized space association gate
+              let bestDist = 0.25; // Normalized space association gate
               localTracks.forEach((track, id) => {
                 if (matchedLocalIds.has(id)) return;
-                const d = Math.hypot(rawCenter.x - track.smoothedCenter.x, rawCenter.y - track.smoothedCenter.y);
+                const sameClassBonus = (track.classLabel === p.class) ? 0.05 : 0;
+                const d = Math.hypot(rawCenter.x - track.smoothedCenter.x, rawCenter.y - track.smoothedCenter.y) - sameClassBonus;
                 if (d < bestDist) {
                   bestDist = d;
                   bestTrackId = id;
@@ -882,9 +1020,11 @@
               });
 
               if (!bestTrackId) {
-                bestTrackId = 'MOBILE-' + String(nextLocalNum++).padStart(3, '0');
+                const prefix = isPerson ? 'PERSON-' : 'OBJ-';
+                bestTrackId = prefix + String(nextLocalNum++).padStart(3, '0');
                 localTracks.set(bestTrackId, {
                   localId: bestTrackId,
+                  classLabel: p.class,
                   smoothedCenter: { ...rawCenter },
                   lastTimestamp: now,
                   keypointHistory: new Map()
@@ -893,6 +1033,7 @@
               matchedLocalIds.add(bestTrackId);
 
               const track = localTracks.get(bestTrackId);
+              track.classLabel = p.class;
 
               // Exponential Smoothing on Center Position (alpha ~ 0.3)
               const alpha = 0.3;
@@ -921,13 +1062,12 @@
               }
 
               const elapsedSec = Math.max(0.01, (now - track.lastTimestamp) / 1000);
-              // Explicitly labeled normalized-units-per-second, never km/h or m/s
               const speedEstimate = Number((distance / elapsedSec).toFixed(3));
               track.lastTimestamp = now;
 
-              // MoveNet Pose Association by IoU
+              // MoveNet Pose Association by IoU (for Person detections only)
               let matchedPose = null;
-              if (poseActive && poses.length > 0) {
+              if (isPerson && poseActive && poses.length > 0) {
                 let bestIoU = 0.08;
                 poses.forEach(pose => {
                   const validKp = (pose.keypoints || []).filter(k => (k.score || 0) > 0.2);
@@ -945,12 +1085,12 @@
                 });
               }
 
-              // Compute Body Measurements in Pixels (and Normalized Equivalents)
+              // Compute Body Measurements & Motion for Persons
               let bodyMeasurements = null;
               let bodyMotion = null;
               let posePayload = null;
 
-              if (matchedPose && matchedPose.keypoints) {
+              if (isPerson && matchedPose && matchedPose.keypoints) {
                 const kpMap = {};
                 matchedPose.keypoints.forEach(k => { kpMap[k.name] = k; });
 
@@ -974,14 +1114,14 @@
                   ? Math.round(Math.hypot(lw.x - rw.x, lw.y - rw.y)) : null;
 
                 bodyMeasurements = {
-                  calibrated: false, // Standard uncalibrated tag
+                  calibrated: false,
                   shoulderWidthPx,
                   hipWidthPx,
                   torsoLengthPx,
                   armSpanPx
                 };
 
-                // Compute Frame-to-Frame Limb Displacement (Unitless Movement Magnitude)
+                // Compute Frame-to-Frame Limb Displacement
                 let armDisp = 0, armCount = 0;
                 let legDisp = 0, legCount = 0;
                 let torsoDisp = 0, torsoCount = 0;
@@ -1024,8 +1164,6 @@
                 const armMovement = armCount > 0 ? Number((armDisp / armCount).toFixed(4)) : 0;
                 const legMovement = legCount > 0 ? Number((legDisp / legCount).toFixed(4)) : 0;
                 const torsoMovement = torsoCount > 0 ? Number((torsoDisp / torsoCount).toFixed(4)) : 0;
-
-                // Coarse state strictly limited to STATIONARY | MOVING
                 const motionState = (distance >= DEADZONE || torsoMovement > 0.015) ? 'MOVING' : 'STATIONARY';
 
                 bodyMotion = {
@@ -1045,7 +1183,6 @@
                   }))
                 };
               } else {
-                // Pose unavailable or unassociated; fallback bodyMotion from centroid
                 bodyMotion = {
                   state: distance >= DEADZONE ? 'MOVING' : 'STATIONARY',
                   armMovement: null,
@@ -1055,8 +1192,8 @@
               }
 
               currentDetections.push({
-                localId: bestTrackId, // Informational client grouping label only
-                classLabel: 'person',
+                localId: bestTrackId,
+                classLabel: p.class,
                 confidence: Number(p.score.toFixed(2)),
                 bbox: rawBbox,
                 movement: {
@@ -1069,7 +1206,7 @@
                 bodyMeasurements,
                 bodyMotion,
                 pose: posePayload,
-                rawPoseKeypoints: matchedPose ? matchedPose.keypoints : null // For local canvas drawing only
+                rawPoseKeypoints: isPerson && matchedPose ? matchedPose.keypoints : null
               });
             });
 
@@ -1080,27 +1217,47 @@
               }
             });
 
-            // Transmit Structured Multi-Person Payload via WebSocket (Metadata ONLY)
+            // Capture lightweight video preview frame for the dashboard center feed (~15KB JPEG)
+            let frameImage = null;
+            if (previewCtx && video.videoWidth > 0) {
+              previewCtx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
+              frameImage = previewCanvas.toDataURL('image/jpeg', 0.50);
+            }
+
+            // Transmit Structured Multi-Object Payload via WebSocket (Metadata + Frame)
             if (ws && ws.readyState === WebSocket.OPEN) {
               const payload = {
                 type: 'MOBILE_DETECTION',
                 cameraId: 'CAM-MOBILE-01',
                 timestamp: now,
+                frameImage: frameImage,
+                frameWidth: actualW,
+                frameHeight: actualH,
                 detections: currentDetections.map(d => ({
-                  classLabel: 'person',
+                  classLabel: d.classLabel,
                   confidence: d.confidence,
                   bbox: d.bbox
                 }))
               };
-              console.log('[MOBILE-CAM] Sending MOBILE_DETECTION message:', payload);
               ws.send(JSON.stringify(payload));
               if (currentDetections.length > 0) {
-                console.log(`[MOBILE-CAM] Detection metadata sent: ${currentDetections.length} persons`);
+                console.log(`[MOBILE-CAM] Detections sent: ${currentDetections.length} objects (${currentDetections.map(d => d.classLabel).join(', ')})`);
               }
             }
 
             // Update Phone Status HUD & Live Telemetry Tray
-            statPersonCount.textContent = currentDetections.length;
+            if (statPersonCount) {
+              if (currentDetections.length === 0) {
+                statPersonCount.textContent = '0';
+              } else {
+                const classCounts = {};
+                currentDetections.forEach(d => {
+                  classCounts[d.classLabel] = (classCounts[d.classLabel] || 0) + 1;
+                });
+                const summary = Object.entries(classCounts).map(([k, v]) => `${v} ${k}`).join(', ');
+                statPersonCount.textContent = `${currentDetections.length} (${summary})`;
+              }
+            }
             renderTelemetryTray(currentDetections, actualW, actualH);
 
             // Render Local Canvas Overlays (Bounding Boxes, Direction Vectors, Skeletons)
@@ -1149,13 +1306,14 @@
         if (detections.length === 0) {
           personsTelemetryList.innerHTML = `
             <div style="text-align:center;padding:12px;color:var(--text-dim)">
-              NO PERSONS IN FRAME — SENSOR IDLE
+              NO OBJECTS IN FRAME — SENSOR IDLE
             </div>
           `;
           return;
         }
 
         personsTelemetryList.innerHTML = detections.map(d => {
+          const cl = (d.classLabel || 'object').toUpperCase();
           const wPx = Math.round(d.bbox.w * actualW);
           const hPx = Math.round(d.bbox.h * actualH);
           const conf = Math.round(d.confidence * 100);
@@ -1163,23 +1321,24 @@
           const meas = d.bodyMeasurements || {};
           const mot = d.bodyMotion || {};
           const hasPose = !!d.pose;
+          const isPerson = (d.classLabel || '').toLowerCase() === 'person';
 
           return `
-            <div class="person-card">
+            <div class="person-card" style="border-left-color:${isPerson ? 'var(--cyan)' : 'var(--green)'}">
               <div class="person-card-top">
-                <span class="person-id-tag">${d.localId}</span>
-                <span style="color:var(--accent-green)">${conf}% CONF</span>
+                <span class="person-id-tag">[${cl}] ${d.localId}</span>
+                <span style="color:var(--green)">${conf}% CONF</span>
                 <span style="font-size:8px;color:${hasPose ? 'var(--cyan)' : 'var(--text-dim)'}">
-                  ${hasPose ? '● POSE: TRACKED' : '○ POSE: N/A'}
+                  ${hasPose ? '● POSE: TRACKED' : (isPerson ? '○ POSE: N/A' : 'OBJECT')}
                 </span>
               </div>
               <div class="person-metrics">
                 <div>SIZE: <strong>${wPx}x${hPx}px</strong></div>
                 <div>DIR: <strong style="color:var(--cyan)">${m.direction || 'STATIONARY'}</strong></div>
-                <div>STATE: <strong style="color:${mot.state === 'MOVING' ? 'var(--green)' : 'var(--amber)'}">${mot.state || 'IDLE'}</strong></div>
+                <div>STATE: <strong style="color:${mot.state === 'MOVING' ? 'var(--green)' : 'var(--amber)'}">${mot.state || 'TRACKED'}</strong></div>
                 <div>SPEED: <strong>${m.speedEstimate || 0} norm/s</strong></div>
-                <div>SHOULDER: <strong>${meas.shoulderWidthPx ? meas.shoulderWidthPx + 'px' : '--'}</strong></div>
-                <div>HIP: <strong>${meas.hipWidthPx ? meas.hipWidthPx + 'px' : '--'}</strong></div>
+                ${isPerson && meas.shoulderWidthPx ? `<div>SHOULDER: <strong>${meas.shoulderWidthPx}px</strong></div>` : `<div>CLASS: <strong style="color:var(--cyan)">${cl}</strong></div>`}
+                ${isPerson && meas.hipWidthPx ? `<div>HIP: <strong>${meas.hipWidthPx}px</strong></div>` : `<div>SENSOR: <strong>CAM-MOBILE</strong></div>`}
               </div>
             </div>
           `;
@@ -1204,12 +1363,20 @@
 
           ctx.save();
 
+          // Class-based color styling
+          const cl = (det.classLabel || 'object').toLowerCase();
+          let color = '#00e676'; // vibrant neon green for standard objects
+          if (cl === 'person') color = '#00e5ff'; // tactical cyan
+          else if (['cell phone', 'laptop', 'tv', 'keyboard', 'mouse', 'remote'].includes(cl)) color = '#38bdf8'; // light blue
+          else if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(cl)) color = '#ffb300'; // amber
+          else if (['knife', 'scissors', 'weapon', 'gun'].includes(cl)) color = '#ff3d71'; // red threat
+
           // 1. Tactical Bounding Frame
-          ctx.strokeStyle = '#00e5ff';
+          ctx.strokeStyle = color;
           ctx.lineWidth = 1.5;
           ctx.strokeRect(bx, by, bw, bh);
 
-          // Corner Brackets
+          // Corner Brackets (advanced-android-camera style)
           const bLen = Math.min(14, bw * 0.25);
           ctx.lineWidth = 3;
           ctx.beginPath();
@@ -1221,10 +1388,10 @@
 
           // Label Banner Top
           const conf = Math.round(det.confidence * 100);
-          const topLabel = `${det.localId} ${conf}% [${det.movement?.direction || 'STATIONARY'}]`;
+          const topLabel = `${det.classLabel.toUpperCase()} [${det.localId}] ${conf}%`;
           ctx.font = 'bold 10px "JetBrains Mono", monospace';
           const tw = ctx.measureText(topLabel).width;
-          ctx.fillStyle = 'rgba(0, 229, 255, 0.85)';
+          ctx.fillStyle = color;
           ctx.fillRect(bx, Math.max(0, by - 16), tw + 6, 16);
           ctx.fillStyle = '#000';
           ctx.fillText(topLabel, bx + 3, Math.max(12, by - 4));
@@ -1232,7 +1399,7 @@
           // 2. Centroid & Movement Direction Vector
           const cx = bx + bw / 2;
           const cy = by + bh / 2;
-          ctx.fillStyle = '#00e676';
+          ctx.fillStyle = color;
           ctx.beginPath();
           ctx.arc(cx, cy, 3, 0, Math.PI * 2);
           ctx.fill();
@@ -1261,7 +1428,7 @@
             ctx.fill();
           }
 
-          // 3. MoveNet Skeleton Lines and Keypoints
+          // 3. MoveNet Skeleton Lines and Keypoints (for Person detections)
           if (det.rawPoseKeypoints && det.rawPoseKeypoints.length > 0) {
             const kpMap = {};
             det.rawPoseKeypoints.forEach(k => {

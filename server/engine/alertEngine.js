@@ -96,6 +96,7 @@ class AlertEngine {
         this.activeEvents.set(eventKey, event);
         this.storage.saveEvent(event);
         generatedOrUpdatedEvents.push(event);
+        console.log(`[ALERT] event=${event.event_id} camera=${event.camera_id} track=${event.track_id} system_status=ACTIVE (NEW)`);
       }
     }
 
@@ -108,6 +109,8 @@ class AlertEngine {
           // Event has concluded
           event.system_status = 'RESOLVED';
           this.storage.saveEvent(event);
+          generatedOrUpdatedEvents.push(event);
+          console.log(`[ALERT] event=${event.event_id} camera=${event.camera_id} track=${event.track_id} system_status=RESOLVED`);
           this.activeEvents.delete(key);
 
           // Set cooldown on this zone/track to prevent instant re-trigger flapping
