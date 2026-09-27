@@ -367,6 +367,157 @@
     .vf-tr { top: 0; right: 0; border-width: 2.5px 2.5px 0 0; }
     .vf-bl { bottom: 0; left: 0; border-width: 0 0 2.5px 2.5px; }
     .vf-br { bottom: 0; right: 0; border-width: 0 2.5px 2.5px 0; }
+
+    /* Tactical Calibration Panel & Banner Styles */
+    .calibration-panel {
+      background: rgba(4, 10, 18, 0.96);
+      border: 1px solid var(--card-border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      backdrop-filter: blur(14px);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .calibration-panel.hidden {
+      display: none;
+    }
+    .calib-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+      font-weight: 700;
+      color: var(--cyan);
+    }
+    .calib-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .calib-field {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .calib-field label {
+      color: var(--text-muted);
+      font-size: 9px;
+      font-weight: 600;
+    }
+    .calib-input-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .calib-input-row input, .calib-input-row select {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(0, 229, 255, 0.3);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      outline: none;
+    }
+    .calib-input-row input:focus, .calib-input-row select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 6px rgba(0, 229, 255, 0.4);
+    }
+    .calib-input-row span {
+      color: var(--text-dim);
+      font-size: 9px;
+      min-width: 14px;
+    }
+    .calib-actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .calib-invalid-banner {
+      background: rgba(255, 170, 0, 0.16);
+      border: 1px solid var(--amber);
+      border-left: 3px solid var(--amber);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(8px);
+    }
+    .calib-invalid-banner.hidden {
+      display: none;
+    }
+    .sensor-perm-banner {
+      background: rgba(0, 229, 255, 0.14);
+      border: 1px solid var(--cyan);
+      border-left: 3px solid var(--cyan);
+      color: #fff;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      backdrop-filter: blur(8px);
+    }
+    .sensor-perm-banner.hidden {
+      display: none;
+    }
+    .debug-panel {
+      background: rgba(2, 6, 12, 0.95);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-dim);
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .debug-panel.hidden {
+      display: none;
+    }
+    .debug-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 3px 8px;
+    }
+    .debug-grid span {
+      color: var(--text-muted);
+    }
+    .debug-grid strong {
+      color: var(--cyan);
+    }
+    .badge-calibrated {
+      color: var(--green);
+      background: rgba(0, 230, 118, 0.12);
+      border: 1px solid rgba(0, 230, 118, 0.35);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 8px;
+    }
+    .badge-uncalibrated {
+      color: var(--amber);
+      background: rgba(255, 170, 0, 0.12);
+      border: 1px solid rgba(255, 170, 0, 0.35);
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: 8px;
+    }
   </style>
 
   <!-- Pinned versions of TensorFlow.js, COCO-SSD, MoveNet Pose-Detection, and PeerJS -->
@@ -411,27 +562,143 @@
 
     <!-- Bottom HUD Status Rows & Controls -->
     <div class="hud-bottom">
+      <!-- Device Motion / Orientation Permission Banner (iOS Safari & Explicit Contexts) -->
+      <div id="sensorPermBanner" class="sensor-perm-banner hidden">
+        <span>⚠ MOTION SENSORS REQUIRED FOR POSE TRACKING</span>
+        <button id="btnEnableSensors" class="btn-ctrl" type="button" style="padding:4px 8px;font-size:9px">ENABLE SENSORS</button>
+      </div>
+
+      <!-- Camera Movement Invalidation Alert Banner -->
+      <div id="calibInvalidBanner" class="calib-invalid-banner hidden">
+        <div>
+          <strong style="color:var(--amber)">⚠ CAMERA MOVEMENT DETECTED</strong><br>
+          <span style="font-size:9px;color:#cfd8dc">Pose shifted beyond tolerance. Measurements switched to RELATIVE / UNCALIBRATED mode.</span>
+        </div>
+        <button id="btnBannerRecalibrate" class="btn-ctrl" type="button" style="padding:5px 8px;border-color:var(--amber);color:var(--amber);white-space:nowrap">RECALIBRATE</button>
+      </div>
+
+      <!-- Compact Tactical Camera Calibration Panel -->
+      <div id="calibrationPanel" class="calibration-panel hidden">
+        <div class="calib-header">
+          <span>CAMERA CALIBRATION // POSE ESTIMATOR</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span id="calibPanelStatusBadge" class="header-tag" style="font-size:9px">UNCALIBRATED</span>
+            <button id="btnCloseCalibPanel" type="button" style="background:none;border:none;color:var(--text-muted);font-size:14px;cursor:pointer;line-height:1">✕</button>
+          </div>
+        </div>
+        <div style="font-size:8.5px;color:var(--text-muted)">
+          Pinhole ground-plane projection. Values are <strong style="color:var(--cyan)">ESTIMATED / USER CALIBRATED</strong>.
+        </div>
+        <div class="calib-grid">
+          <div class="calib-field">
+            <label>Camera Height</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpCamHeight" value="1.70" step="0.05" min="0.3" max="10.0">
+              <span>m</span>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Camera Pitch / Tilt</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpCamPitch" value="5.0" step="0.5" min="-85" max="85">
+              <span>°</span>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Camera Yaw</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpCamYaw" value="0.0" step="0.5" min="-180" max="180">
+              <span>°</span>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Camera Roll</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpCamRoll" value="0.0" step="0.5" min="-90" max="90">
+              <span>°</span>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Horizontal FOV</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpHFov" value="78" step="1" min="30" max="140">
+              <span>°</span>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Vertical FOV</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpVFov" value="45" step="1" min="20" max="100">
+              <span>°</span>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Reference Object</label>
+            <div class="calib-input-row">
+              <select id="selRefObject">
+                <option value="person" selected>PERSON</option>
+                <option value="vehicle">VEHICLE</option>
+                <option value="custom">CUSTOM</option>
+              </select>
+            </div>
+          </div>
+          <div class="calib-field">
+            <label>Ref Object Height</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpRefHeight" value="1.70" step="0.05" min="0.2" max="10.0">
+              <span>m</span>
+            </div>
+          </div>
+          <div class="calib-field" style="grid-column: span 2">
+            <label>Reference Distance</label>
+            <div class="calib-input-row">
+              <input type="number" id="inpRefDistance" value="5.0" step="0.5" min="0.5" max="100.0">
+              <span>m</span>
+            </div>
+          </div>
+        </div>
+        <div class="calib-actions">
+          <button class="btn-ctrl" id="btnCalibrateCamera" type="button" style="border-color:var(--cyan);color:var(--cyan)">
+            CALIBRATE
+          </button>
+          <button class="btn-ctrl" id="btnPanelRecalibrate" type="button" style="border-color:var(--green);color:var(--green)">
+            RECALIBRATE
+          </button>
+          <button class="btn-ctrl" id="btnAdoptSensorPose" type="button" style="border-color:var(--amber);color:var(--amber)" title="Capture pitch/roll from live phone sensors">
+            USE SENSOR
+          </button>
+        </div>
+      </div>
+
+      <!-- Tactical Camera Debug Diagnostics Panel -->
+      <div id="cameraDebugPanel" class="debug-panel hidden">
+        <div style="display:flex;justify-content:space-between;color:var(--cyan);font-weight:700;margin-bottom:2px">
+          <span>CAMERA DEBUG DIAGNOSTICS</span>
+          <span id="dbgSensorRate">RATE: --</span>
+        </div>
+        <div class="debug-grid">
+          <div><span>Resolution:</span> <strong id="dbgRes">--</strong></div>
+          <div><span>Cadence / FPS:</span> <strong id="dbgFps">--</strong></div>
+          <div><span>Facing Mode:</span> <strong id="dbgFacing">environment</strong></div>
+          <div><span>Pose State:</span> <strong id="dbgPose">STABLE</strong></div>
+          <div><span>Live Pitch:</span> <strong id="dbgLivePitch">+0.0°</strong></div>
+          <div><span>Calib Pitch:</span> <strong id="dbgCalibPitch">--</strong></div>
+          <div><span>Live Yaw:</span> <strong id="dbgLiveYaw">+0.0°</strong></div>
+          <div><span>Calib Yaw:</span> <strong id="dbgCalibYaw">--</strong></div>
+          <div><span>Live Roll:</span> <strong id="dbgLiveRoll">+0.0°</strong></div>
+          <div><span>Calib Roll:</span> <strong id="dbgCalibRoll">--</strong></div>
+          <div><span>Pitch Delta:</span> <strong id="dbgPitchDelta">0.0°</strong></div>
+          <div><span>Roll Delta:</span> <strong id="dbgRollDelta">0.0°</strong></div>
+          <div><span>Yaw Delta:</span> <strong id="dbgYawDelta">0.0°</strong></div>
+          <div><span>Calibration:</span> <strong id="dbgCalibState">UNCALIBRATED</strong></div>
+        </div>
+      </div>
+
       <!-- Status Indicators Panel -->
       <div class="status-panel">
         <div class="status-grid">
           <div class="status-item">
-            <span class="status-label">AI ENGINE:</span>
-            <span class="status-val" id="statAiModel">
-              <span class="dot amber"></span>
-              <span>Loading...</span>
-            </span>
-          </div>
-
-          <div class="status-item">
-            <span class="status-label">POSE ENGINE:</span>
-            <span class="status-val" id="statPoseModel">
-              <span class="dot amber"></span>
-              <span>Initializing...</span>
-            </span>
-          </div>
-
-          <div class="status-item">
-            <span class="status-label">Camera Feed</span>
+            <span class="status-label">CAMERA FEED:</span>
             <span class="status-val" id="statCamFeed">
               <span class="dot red"></span>
               <span>Stopped</span>
@@ -439,21 +706,63 @@
           </div>
 
           <div class="status-item">
-            <span class="status-label">Objects Tracked</span>
-            <span class="status-val" style="color:var(--cyan)" id="statPersonCount">0</span>
+            <span class="status-label">VIDEO RES:</span>
+            <span class="status-val" style="color:var(--cyan)" id="statVideoRes">--</span>
           </div>
 
           <div class="status-item">
-            <span class="status-label">IBVAP Server</span>
-            <span class="status-val" id="statServer">
-              <span class="dot amber"></span>
-              <span>Connecting...</span>
+            <span class="status-label">CAMERA POSE:</span>
+            <span class="status-val" id="statCameraPose">
+              <span class="dot green"></span>
+              <span>STABLE</span>
             </span>
           </div>
 
           <div class="status-item">
-            <span class="status-label">Cadence / Time</span>
+            <span class="status-label">CALIBRATION:</span>
+            <span class="status-val" id="statCalibStatus">
+              <span class="dot amber"></span>
+              <span>UNCALIBRATED</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">MEASUREMENT:</span>
+            <span class="status-val" id="statMeasureMode" style="color:var(--amber)">RELATIVE / PX</span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">MOTION SENSOR:</span>
+            <span class="status-val" id="statSensor">
+              <span class="dot dim"></span>
+              <span>CHECKING...</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">AI & POSE:</span>
+            <span class="status-val" id="statAiModel">
+              <span class="dot amber"></span>
+              <span>Loading...</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">OBJECTS TRACKED:</span>
+            <span class="status-val" style="color:var(--cyan)" id="statPersonCount">0</span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">CADENCE / TIME:</span>
             <span class="status-val" style="color:var(--green)" id="statCadence">175ms</span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">IBVAP UPLINK:</span>
+            <span class="status-val" id="statServer">
+              <span class="dot amber"></span>
+              <span>Connecting...</span>
+            </span>
           </div>
         </div>
       </div>
@@ -490,6 +799,22 @@
         </button>
       </div>
 
+      <!-- Controls Row 3: Calibration & Pose Controls -->
+      <div class="action-row" style="margin-top:2px">
+        <button class="btn-ctrl" id="btnToggleCalibPanel" type="button" title="Configure camera calibration & pose">
+          📐 CALIB
+        </button>
+        <button class="btn-ctrl" id="btnQuickRecalibrate" type="button" title="Recalibrate camera to current stable pose">
+          ⚡ RECALIB
+        </button>
+        <button class="btn-ctrl off" id="btnToggleAutoRecalib" type="button" title="Toggle automatic recalibration when camera stabilizes">
+          AUTO: OFF
+        </button>
+        <button class="btn-ctrl off" id="btnToggleDebugView" type="button" title="Toggle telemetry debug info">
+          📊 DEBUG
+        </button>
+      </div>
+
       <!-- Live Objects & Movement Telemetry Tray -->
       <div class="telemetry-tray">
         <div class="telemetry-tray-header">
@@ -504,7 +829,7 @@
       </div>
 
       <!-- Image-space disclaimer -->
-      <div class="disclaimer-bar">
+      <div class="disclaimer-bar" id="disclaimerBar">
         Image-space relative measurements only. Uncalibrated (normalized / px).
       </div>
 
@@ -517,21 +842,27 @@
 
   <script>
     (function() {
-      // DOM Elements
+      // DOM Elements - Core
       const video = document.getElementById('cameraVideo');
       const canvas = document.getElementById('detectionCanvas');
       const ctx = canvas.getContext('2d');
       const errorBanner = document.getElementById('errorBanner');
       const errorMessage = document.getElementById('errorMessage');
 
-      const statAiModel = document.getElementById('statAiModel');
-      const statPoseModel = document.getElementById('statPoseModel');
+      // DOM Elements - Status Grid
       const statCamFeed = document.getElementById('statCamFeed');
+      const statVideoRes = document.getElementById('statVideoRes');
+      const statCameraPose = document.getElementById('statCameraPose');
+      const statCalibStatus = document.getElementById('statCalibStatus');
+      const statMeasureMode = document.getElementById('statMeasureMode');
+      const statSensor = document.getElementById('statSensor');
+      const statAiModel = document.getElementById('statAiModel');
       const statPersonCount = document.getElementById('statPersonCount');
-      const statServer = document.getElementById('statServer');
       const statCadence = document.getElementById('statCadence');
+      const statServer = document.getElementById('statServer');
       const aiPipelineBadge = document.getElementById('aiPipelineBadge');
 
+      // DOM Elements - Buttons Row 1 & 2
       const btnToggleCamera = document.getElementById('btnToggleCamera');
       const btnSwitchCam = document.getElementById('btnSwitchCam');
       const btnTogglePose = document.getElementById('btnTogglePose');
@@ -541,19 +872,113 @@
       const btnToggleDetectFilter = document.getElementById('btnToggleDetectFilter');
       const btnSyncCenter = document.getElementById('btnSyncCenter');
 
+      // DOM Elements - Buttons Row 3 & Calibration Controls
+      const btnToggleCalibPanel = document.getElementById('btnToggleCalibPanel');
+      const btnQuickRecalibrate = document.getElementById('btnQuickRecalibrate');
+      const btnToggleAutoRecalib = document.getElementById('btnToggleAutoRecalib');
+      const btnToggleDebugView = document.getElementById('btnToggleDebugView');
+
+      // DOM Elements - Calibration Panel & Banners
+      const calibrationPanel = document.getElementById('calibrationPanel');
+      const btnCloseCalibPanel = document.getElementById('btnCloseCalibPanel');
+      const calibPanelStatusBadge = document.getElementById('calibPanelStatusBadge');
+      const calibInvalidBanner = document.getElementById('calibInvalidBanner');
+      const btnBannerRecalibrate = document.getElementById('btnBannerRecalibrate');
+      const sensorPermBanner = document.getElementById('sensorPermBanner');
+      const btnEnableSensors = document.getElementById('btnEnableSensors');
+
+      const inpCamHeight = document.getElementById('inpCamHeight');
+      const inpCamPitch = document.getElementById('inpCamPitch');
+      const inpCamYaw = document.getElementById('inpCamYaw');
+      const inpCamRoll = document.getElementById('inpCamRoll');
+      const inpHFov = document.getElementById('inpHFov');
+      const inpVFov = document.getElementById('inpVFov');
+      const selRefObject = document.getElementById('selRefObject');
+      const inpRefHeight = document.getElementById('inpRefHeight');
+      const inpRefDistance = document.getElementById('inpRefDistance');
+
+      const btnCalibrateCamera = document.getElementById('btnCalibrateCamera');
+      const btnPanelRecalibrate = document.getElementById('btnPanelRecalibrate');
+      const btnAdoptSensorPose = document.getElementById('btnAdoptSensorPose');
+
+      // DOM Elements - Debug Diagnostics
+      const cameraDebugPanel = document.getElementById('cameraDebugPanel');
+      const dbgSensorRate = document.getElementById('dbgSensorRate');
+      const dbgRes = document.getElementById('dbgRes');
+      const dbgFps = document.getElementById('dbgFps');
+      const dbgFacing = document.getElementById('dbgFacing');
+      const dbgPose = document.getElementById('dbgPose');
+      const dbgLivePitch = document.getElementById('dbgLivePitch');
+      const dbgCalibPitch = document.getElementById('dbgCalibPitch');
+      const dbgLiveYaw = document.getElementById('dbgLiveYaw');
+      const dbgCalibYaw = document.getElementById('dbgCalibYaw');
+      const dbgLiveRoll = document.getElementById('dbgLiveRoll');
+      const dbgCalibRoll = document.getElementById('dbgCalibRoll');
+      const dbgPitchDelta = document.getElementById('dbgPitchDelta');
+      const dbgRollDelta = document.getElementById('dbgRollDelta');
+      const dbgYawDelta = document.getElementById('dbgYawDelta');
+      const dbgCalibState = document.getElementById('dbgCalibState');
+
       const personsTelemetryList = document.getElementById('personsTelemetryList');
       const telemetryTrayCount = document.getElementById('telemetryTrayCount');
+      const disclaimerBar = document.getElementById('disclaimerBar');
       const debugHost = document.getElementById('debugHost');
       const debugWsUrl = document.getElementById('debugWsUrl');
 
-      // State
+      // ============================================================
+      // 1. DATA MODEL & CALIBRATION STATE
+      // ============================================================
+      const cameraCalibration = {
+        status: 'UNCALIBRATED', // 'CALIBRATED' | 'CALIBRATION_INVALID' | 'CALIBRATING' | 'UNCALIBRATED' | 'SENSOR_UNAVAILABLE'
+        cameraHeightM: 1.70,
+        pitchDeg: 5.0,
+        yawDeg: 0.0,
+        rollDeg: 0.0,
+        horizontalFovDeg: 78,
+        verticalFovDeg: 45,
+        referenceObject: 'person',
+        referenceHeightM: 1.70,
+        referenceDistanceM: 5.0,
+        calibrationTimestamp: null,
+        poseAtCalibration: {
+          pitch: 5.0,
+          yaw: 0.0,
+          roll: 0.0
+        }
+      };
+
+      // Live Device Pose & Motion Tracking
+      const currentPose = { pitch: 5.0, yaw: 0.0, roll: 0.0, timestamp: Date.now() };
+      const prevPose = { pitch: 5.0, yaw: 0.0, roll: 0.0, timestamp: Date.now() };
+      const smoothedPose = { pitch: 5.0, yaw: 0.0, roll: 0.0 };
+
+      let cameraPoseState = 'STABLE'; // 'STABLE' | 'MOVING'
+      let lastMovementTimestamp = 0;
+      let motionStabilizeTimer = null;
+      let autoRecalibrate = false;
+      let sensorAvailable = false;
+      let sensorActive = false;
+      let sensorEventCount = 0;
+      let lastSensorSampleTime = Date.now();
+
+      // Delta compensation for separating camera movement from object motion
+      let cameraDeltaFromPrevFrame = { dx: 0, dy: 0 };
+
+      // Movement Invalidation Tolerances (Configurable thresholds)
+      const PITCH_TOLERANCE = 3.0; // degrees
+      const ROLL_TOLERANCE = 3.0;  // degrees
+      const YAW_TOLERANCE = 5.0;   // degrees
+      const MOTION_ANGULAR_VEL_THRESHOLD = 2.2; // degrees per frame/event to trigger MOVING
+      const STABILIZATION_DELAY_MS = 1500; // 1.5s stillness required before accepting STABLE
+
+      // Detection & System State
       let cocoModel = null;
       let cocoReady = false;
       let poseDetector = null;
       let poseReady = false;
       let poseAvailable = true;
-      let poseEnabled = true;       // UI toggle, default ON
-      let overlayEnabled = true;    // UI toggle, default ON
+      let poseEnabled = true;
+      let overlayEnabled = true;
       let isStreaming = false;
       let videoReady = false;
       let currentStream = null;
@@ -562,30 +987,29 @@
       let reconnectTimer = null;
       let reconnectDelay = 2000;
 
-      // Tactical Zoom, Flash & Detection Filter States (inspired by advanced-android-camera)
+      // Tactical Zoom, Flash & Detection Filter States
       let currentZoom = 1.0;
       let torchOn = false;
-      let detectFilterMode = 'all'; // 'all' (all COCO-SSD objects) or 'person'
+      let detectFilterMode = 'all';
 
-      // Offscreen preview canvas for lightweight video streaming to C2 dashboard center
+      // Offscreen preview canvas for lightweight video streaming to C2
       const previewCanvas = document.createElement('canvas');
       previewCanvas.width = 480;
       previewCanvas.height = 270;
       const previewCtx = previewCanvas.getContext('2d');
 
-      // Local client-side tracking state (grouping label only; server assigns persistent trackId)
-      let localTracks = new Map(); // localId -> trackState
+      // Local client-side tracking state
+      let localTracks = new Map();
       let nextLocalNum = 1;
 
-      // Performance Budget & Adaptive Interval
+      // Performance Budget & Adaptive Cadence
       let currentInterval = 175; // ms
       let slowCycles = 0;
       let fastCycles = 0;
 
-      // Populate debug display
-      debugHost.textContent = location.host;
+      if (debugHost) debugHost.textContent = location.host;
 
-      // Skeleton bone connection pairs for MoveNet 17-keypoint model
+      // Skeleton bone connections for MoveNet MultiPose
       const SKELETON_PAIRS = [
         ['left_shoulder', 'right_shoulder'],
         ['left_shoulder', 'left_elbow'],
@@ -602,16 +1026,19 @@
       ];
 
       function showError(msg) {
+        if (!errorMessage || !errorBanner) return;
         errorMessage.textContent = msg;
         errorBanner.classList.remove('hidden');
       }
 
       function clearError() {
+        if (!errorMessage || !errorBanner) return;
         errorMessage.textContent = '';
         errorBanner.classList.add('hidden');
       }
 
       function setStatus(el, state, text) {
+        if (!el) return;
         let dotClass = 'amber';
         if (state === 'ok') dotClass = 'green';
         if (state === 'error') dotClass = 'red';
@@ -619,28 +1046,547 @@
         el.innerHTML = `<span class="dot ${dotClass}"></span> <span>${text}</span>`;
       }
 
-      function updatePoseStatusUI() {
-        if (!poseAvailable) {
-          setStatus(statPoseModel, 'error', '● UNAVAILABLE');
-          btnTogglePose.classList.add('danger');
-          btnTogglePose.textContent = 'Pose: N/A';
-          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD ONLY';
-        } else if (!poseEnabled) {
-          setStatus(statPoseModel, 'dim', '○ DISABLED');
-          btnTogglePose.classList.add('off');
-          btnTogglePose.textContent = 'Pose: OFF';
-          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD (POSE OFF)';
-        } else if (poseReady) {
-          setStatus(statPoseModel, 'ok', '● MOVENET READY');
-          btnTogglePose.classList.remove('off', 'danger');
-          btnTogglePose.textContent = 'Pose: ON';
-          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD + MOVENET';
+      // ============================================================
+      // 2. CALIBRATION STATE MANAGEMENT & UI UPDATER
+      // ============================================================
+      function updateCalibrationUI() {
+        const status = cameraCalibration.status;
+
+        // Status grid Calib item
+        if (statCalibStatus) {
+          if (status === 'CALIBRATED') {
+            setStatus(statCalibStatus, 'ok', 'VALID');
+          } else if (status === 'CALIBRATION_INVALID') {
+            setStatus(statCalibStatus, 'error', 'INVALID');
+          } else if (status === 'CALIBRATING') {
+            setStatus(statCalibStatus, 'warn', 'CALIBRATING');
+          } else if (status === 'SENSOR_UNAVAILABLE') {
+            setStatus(statCalibStatus, 'dim', 'SENSOR N/A');
+          } else {
+            setStatus(statCalibStatus, 'warn', 'UNCALIBRATED');
+          }
+        }
+
+        // Panel Status Badge
+        if (calibPanelStatusBadge) {
+          calibPanelStatusBadge.textContent = status;
+          if (status === 'CALIBRATED') {
+            calibPanelStatusBadge.style.borderColor = 'var(--green)';
+            calibPanelStatusBadge.style.color = 'var(--green)';
+          } else if (status === 'CALIBRATION_INVALID') {
+            calibPanelStatusBadge.style.borderColor = 'var(--amber)';
+            calibPanelStatusBadge.style.color = 'var(--amber)';
+          } else {
+            calibPanelStatusBadge.style.borderColor = 'var(--text-muted)';
+            calibPanelStatusBadge.style.color = 'var(--text-muted)';
+          }
+        }
+
+        // Measurement Mode Badge
+        if (statMeasureMode) {
+          if (status === 'CALIBRATED') {
+            statMeasureMode.textContent = 'CALIBRATED ESTIMATE';
+            statMeasureMode.style.color = 'var(--green)';
+          } else {
+            statMeasureMode.textContent = 'RELATIVE / PX';
+            statMeasureMode.style.color = 'var(--amber)';
+          }
+        }
+
+        // Disclaimer Bar
+        if (disclaimerBar) {
+          if (status === 'CALIBRATED') {
+            disclaimerBar.innerHTML = 'Pinhole ground-plane projection. Measurements are <strong style="color:var(--cyan)">CALIBRATED ESTIMATES (approximate)</strong>.';
+          } else if (status === 'CALIBRATION_INVALID') {
+            disclaimerBar.innerHTML = '<strong style="color:var(--amber)">⚠ CALIBRATION INVALID</strong>: Camera moved. Measurements in RELATIVE / UNCALIBRATED (px) mode.';
+          } else {
+            disclaimerBar.textContent = 'Image-space relative measurements only. Uncalibrated (normalized / px).';
+          }
+        }
+
+        // Quick Recalibrate Button state
+        if (btnQuickRecalibrate) {
+          if (status === 'CALIBRATION_INVALID') {
+            btnQuickRecalibrate.classList.remove('off');
+            btnQuickRecalibrate.classList.add('warn');
+          } else {
+            btnQuickRecalibrate.classList.remove('warn');
+          }
+        }
+
+        // Debug diagnostic values
+        if (dbgCalibState) dbgCalibState.textContent = status;
+      }
+
+      function setCalibrationStatus(newStatus) {
+        cameraCalibration.status = newStatus;
+        updateCalibrationUI();
+
+        if (newStatus === 'CALIBRATION_INVALID') {
+          if (calibInvalidBanner) calibInvalidBanner.classList.remove('hidden');
         } else {
-          setStatus(statPoseModel, 'warn', 'Loading...');
-          btnTogglePose.textContent = 'Pose: LOAD';
+          if (calibInvalidBanner) calibInvalidBanner.classList.add('hidden');
         }
       }
 
+      // ============================================================
+      // 3. SENSOR EVENT HANDLING & CAMERA MOTION DETECTION
+      // ============================================================
+      function handleOrientation(e) {
+        sensorAvailable = true;
+        sensorActive = true;
+        sensorEventCount++;
+
+        // Orientation angles:
+        // beta = pitch (-180 to 180)
+        // gamma = roll (-90 to 90)
+        // alpha = yaw (0 to 360)
+        const rawPitch = typeof e.beta === 'number' ? e.beta : 5.0;
+        const rawRoll = typeof e.gamma === 'number' ? e.gamma : 0.0;
+        const rawYaw = typeof e.alpha === 'number' ? e.alpha : 0.0;
+
+        // Exponential smoothing (alpha = 0.25)
+        const alpha = 0.25;
+        smoothedPose.pitch = Number((alpha * rawPitch + (1 - alpha) * smoothedPose.pitch).toFixed(2));
+        smoothedPose.roll = Number((alpha * rawRoll + (1 - alpha) * smoothedPose.roll).toFixed(2));
+        smoothedPose.yaw = Number((alpha * rawYaw + (1 - alpha) * smoothedPose.yaw).toFixed(2));
+
+        currentPose.pitch = smoothedPose.pitch;
+        currentPose.roll = smoothedPose.roll;
+        currentPose.yaw = smoothedPose.yaw;
+        currentPose.timestamp = Date.now();
+
+        // Calculate delta from previous event to detect immediate angular motion
+        const dPitch = Math.abs(currentPose.pitch - prevPose.pitch);
+        const dRoll = Math.abs(currentPose.roll - prevPose.roll);
+        const dYaw = Math.abs(((currentPose.yaw - prevPose.yaw + 540) % 360) - 180);
+
+        prevPose.pitch = currentPose.pitch;
+        prevPose.roll = currentPose.roll;
+        prevPose.yaw = currentPose.yaw;
+
+        const isMovingNow = (dPitch > MOTION_ANGULAR_VEL_THRESHOLD || dRoll > MOTION_ANGULAR_VEL_THRESHOLD || dYaw > MOTION_ANGULAR_VEL_THRESHOLD);
+
+        if (isMovingNow) {
+          lastMovementTimestamp = Date.now();
+          if (cameraPoseState !== 'MOVING') {
+            cameraPoseState = 'MOVING';
+            if (statCameraPose) setStatus(statCameraPose, 'error', 'MOVING');
+            if (dbgPose) dbgPose.textContent = 'MOVING';
+          }
+          if (motionStabilizeTimer) clearTimeout(motionStabilizeTimer);
+          motionStabilizeTimer = setTimeout(checkCameraStabilization, STABILIZATION_DELAY_MS);
+
+          // Check if camera was CALIBRATED and movement exceeds calibration tolerance
+          if (cameraCalibration.status === 'CALIBRATED') {
+            const calPitchDiff = Math.abs(currentPose.pitch - cameraCalibration.poseAtCalibration.pitch);
+            const calRollDiff = Math.abs(currentPose.roll - cameraCalibration.poseAtCalibration.roll);
+            const calYawDiff = Math.abs(((currentPose.yaw - cameraCalibration.poseAtCalibration.yaw + 540) % 360) - 180);
+
+            if (calPitchDiff > PITCH_TOLERANCE || calRollDiff > ROLL_TOLERANCE || calYawDiff > YAW_TOLERANCE) {
+              console.warn(`[CALIBRATION] Camera moved beyond tolerance (Δp=${calPitchDiff.toFixed(1)}°, Δr=${calRollDiff.toFixed(1)}°, Δy=${calYawDiff.toFixed(1)}°). Invalidating.`);
+              setCalibrationStatus('CALIBRATION_INVALID');
+            }
+          }
+        }
+
+        updateDebugDiagnostics();
+      }
+
+      function handleMotion(e) {
+        sensorAvailable = true;
+        sensorActive = true;
+        sensorEventCount++;
+
+        // Detect acceleration jerk (accel without gravity or rotationRate)
+        const rot = e.rotationRate;
+        const acc = e.acceleration;
+        let moving = false;
+
+        if (rot && (Math.abs(rot.alpha || 0) > 15 || Math.abs(rot.beta || 0) > 15 || Math.abs(rot.gamma || 0) > 15)) {
+          moving = true;
+        } else if (acc && (Math.abs(acc.x || 0) > 1.2 || Math.abs(acc.y || 0) > 1.2 || Math.abs(acc.z || 0) > 1.2)) {
+          moving = true;
+        }
+
+        if (moving) {
+          lastMovementTimestamp = Date.now();
+          if (cameraPoseState !== 'MOVING') {
+            cameraPoseState = 'MOVING';
+            if (statCameraPose) setStatus(statCameraPose, 'error', 'MOVING');
+            if (dbgPose) dbgPose.textContent = 'MOVING';
+          }
+          if (motionStabilizeTimer) clearTimeout(motionStabilizeTimer);
+          motionStabilizeTimer = setTimeout(checkCameraStabilization, STABILIZATION_DELAY_MS);
+        }
+      }
+
+      function checkCameraStabilization() {
+        const elapsedSinceMove = Date.now() - lastMovementTimestamp;
+        if (elapsedSinceMove >= STABILIZATION_DELAY_MS) {
+          cameraPoseState = 'STABLE';
+          if (statCameraPose) setStatus(statCameraPose, 'ok', 'STABLE');
+          if (dbgPose) dbgPose.textContent = 'STABLE';
+
+          // Automatic recalibration if configured and calibration was invalid
+          if (autoRecalibrate && cameraCalibration.status === 'CALIBRATION_INVALID' && sensorActive) {
+            console.log('[CALIBRATION] Auto-recalibrating camera after stabilization.');
+            executeRecalibration(true);
+          }
+        } else {
+          motionStabilizeTimer = setTimeout(checkCameraStabilization, STABILIZATION_DELAY_MS - elapsedSinceMove);
+        }
+      }
+
+      // Check sensor availability on load and configure permission triggers
+      function initMotionSensors() {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          // iOS Safari requires user gesture
+          if (sensorPermBanner) sensorPermBanner.classList.remove('hidden');
+          setStatus(statSensor, 'warn', 'PERMISSION REQ');
+        } else if (window.DeviceOrientationEvent) {
+          // Android Chrome / Standard browsers
+          window.addEventListener('deviceorientation', handleOrientation, true);
+          if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', handleMotion, true);
+          }
+          setStatus(statSensor, 'warn', 'INITIALIZING...');
+
+          // Verification timeout: check if real sensor events actually fired
+          setTimeout(() => {
+            if (sensorEventCount > 0) {
+              sensorAvailable = true;
+              setStatus(statSensor, 'ok', 'ACTIVE');
+            } else {
+              sensorAvailable = false;
+              setStatus(statSensor, 'dim', 'UNAVAILABLE');
+              console.log('[MOBILE-CAM] Device orientation sensors not active on this hardware/browser.');
+            }
+          }, 1600);
+        } else {
+          sensorAvailable = false;
+          setStatus(statSensor, 'dim', 'UNSUPPORTED');
+        }
+      }
+
+      // Request Sensor Permission (iOS Safari)
+      btnEnableSensors?.addEventListener('click', async () => {
+        try {
+          if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const perm = await DeviceOrientationEvent.requestPermission();
+            if (perm === 'granted') {
+              window.addEventListener('deviceorientation', handleOrientation, true);
+              if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+                await DeviceMotionEvent.requestPermission();
+                window.addEventListener('devicemotion', handleMotion, true);
+              }
+              if (sensorPermBanner) sensorPermBanner.classList.add('hidden');
+              sensorAvailable = true;
+              setStatus(statSensor, 'ok', 'ACTIVE');
+            } else {
+              sensorPermBanner.innerHTML = '<span>Motion sensor access denied. Camera movement cannot be verified automatically.</span>';
+              setStatus(statSensor, 'error', 'DENIED');
+            }
+          }
+        } catch (e) {
+          console.warn('[MOBILE-CAM] Sensor permission exception:', e);
+          if (sensorPermBanner) sensorPermBanner.classList.add('hidden');
+          setStatus(statSensor, 'dim', 'UNAVAILABLE');
+        }
+      });
+
+      // Update Debug Panel Diagnostics Grid
+      function updateDebugDiagnostics() {
+        if (!cameraDebugPanel || cameraDebugPanel.classList.contains('hidden')) return;
+
+        if (dbgRes && video.videoWidth > 0) dbgRes.textContent = `${video.videoWidth} × ${video.videoHeight}`;
+        if (dbgFps) dbgFps.textContent = `${Math.round(1000 / currentInterval)} Hz (~${currentInterval}ms)`;
+        if (dbgFacing) dbgFacing.textContent = currentFacing;
+        if (dbgPose) dbgPose.textContent = cameraPoseState;
+
+        if (dbgLivePitch) dbgLivePitch.textContent = `${currentPose.pitch >= 0 ? '+' : ''}${currentPose.pitch.toFixed(1)}°`;
+        if (dbgLiveYaw) dbgLiveYaw.textContent = `${currentPose.yaw >= 0 ? '+' : ''}${currentPose.yaw.toFixed(1)}°`;
+        if (dbgLiveRoll) dbgLiveRoll.textContent = `${currentPose.roll >= 0 ? '+' : ''}${currentPose.roll.toFixed(1)}°`;
+
+        const calPose = cameraCalibration.poseAtCalibration;
+        if (cameraCalibration.calibrationTimestamp) {
+          if (dbgCalibPitch) dbgCalibPitch.textContent = `${calPose.pitch >= 0 ? '+' : ''}${calPose.pitch.toFixed(1)}°`;
+          if (dbgCalibYaw) dbgCalibYaw.textContent = `${calPose.yaw >= 0 ? '+' : ''}${calPose.yaw.toFixed(1)}°`;
+          if (dbgCalibRoll) dbgCalibRoll.textContent = `${calPose.roll >= 0 ? '+' : ''}${calPose.roll.toFixed(1)}°`;
+
+          const dP = Math.abs(currentPose.pitch - calPose.pitch);
+          const dR = Math.abs(currentPose.roll - calPose.roll);
+          const dY = Math.abs(((currentPose.yaw - calPose.yaw + 540) % 360) - 180);
+
+          if (dbgPitchDelta) {
+            dbgPitchDelta.textContent = `${dP.toFixed(1)}°`;
+            dbgPitchDelta.style.color = dP > PITCH_TOLERANCE ? 'var(--amber)' : 'var(--green)';
+          }
+          if (dbgRollDelta) {
+            dbgRollDelta.textContent = `${dR.toFixed(1)}°`;
+            dbgRollDelta.style.color = dR > ROLL_TOLERANCE ? 'var(--amber)' : 'var(--green)';
+          }
+          if (dbgYawDelta) {
+            dbgYawDelta.textContent = `${dY.toFixed(1)}°`;
+            dbgYawDelta.style.color = dY > YAW_TOLERANCE ? 'var(--amber)' : 'var(--green)';
+          }
+        } else {
+          if (dbgCalibPitch) dbgCalibPitch.textContent = '--';
+          if (dbgCalibYaw) dbgCalibYaw.textContent = '--';
+          if (dbgCalibRoll) dbgCalibRoll.textContent = '--';
+          if (dbgPitchDelta) dbgPitchDelta.textContent = '0.0°';
+          if (dbgRollDelta) dbgRollDelta.textContent = '0.0°';
+          if (dbgYawDelta) dbgYawDelta.textContent = '0.0°';
+        }
+      }
+
+      // ============================================================
+      // 4. CALIBRATION ACTIONS & RECALIBRATION
+      // ============================================================
+      function readCalibrationInputs() {
+        cameraCalibration.cameraHeightM = Math.max(0.3, parseFloat(inpCamHeight.value) || 1.70);
+        cameraCalibration.pitchDeg = parseFloat(inpCamPitch.value) || 5.0;
+        cameraCalibration.yawDeg = parseFloat(inpCamYaw.value) || 0.0;
+        cameraCalibration.rollDeg = parseFloat(inpCamRoll.value) || 0.0;
+        cameraCalibration.horizontalFovDeg = Math.max(30, parseFloat(inpHFov.value) || 78);
+        cameraCalibration.verticalFovDeg = Math.max(20, parseFloat(inpVFov.value) || 45);
+        cameraCalibration.referenceObject = selRefObject.value || 'person';
+        cameraCalibration.referenceHeightM = Math.max(0.2, parseFloat(inpRefHeight.value) || 1.70);
+        cameraCalibration.referenceDistanceM = Math.max(0.5, parseFloat(inpRefDistance.value) || 5.0);
+      }
+
+      function executeCalibration() {
+        readCalibrationInputs();
+
+        // Save reference pose at calibration time
+        cameraCalibration.poseAtCalibration = {
+          pitch: sensorActive ? currentPose.pitch : cameraCalibration.pitchDeg,
+          yaw: sensorActive ? currentPose.yaw : cameraCalibration.yawDeg,
+          roll: sensorActive ? currentPose.roll : cameraCalibration.rollDeg
+        };
+        cameraCalibration.calibrationTimestamp = Date.now();
+        setCalibrationStatus('CALIBRATED');
+
+        if (btnCalibrateCamera) {
+          btnCalibrateCamera.textContent = '✓ CALIBRATED';
+          setTimeout(() => { btnCalibrateCamera.textContent = 'CALIBRATE'; }, 1500);
+        }
+        console.log('[CALIBRATION] Calibrated successfully:', cameraCalibration);
+      }
+
+      function executeRecalibration(isAuto = false) {
+        if (cameraPoseState === 'MOVING') {
+          console.warn('[CALIBRATION] Recalibration delayed: camera is currently MOVING. Hold still for 1.5s.');
+          if (!isAuto && btnQuickRecalibrate) {
+            btnQuickRecalibrate.textContent = '⚠ HOLD STILL';
+            setTimeout(() => { btnQuickRecalibrate.textContent = '⚡ RECALIB'; }, 1500);
+          }
+          return;
+        }
+
+        readCalibrationInputs();
+
+        if (sensorActive) {
+          cameraCalibration.pitchDeg = currentPose.pitch;
+          cameraCalibration.yawDeg = currentPose.yaw;
+          cameraCalibration.rollDeg = currentPose.roll;
+          inpCamPitch.value = currentPose.pitch.toFixed(1);
+          inpCamYaw.value = currentPose.yaw.toFixed(1);
+          inpCamRoll.value = currentPose.roll.toFixed(1);
+        }
+
+        cameraCalibration.poseAtCalibration = {
+          pitch: cameraCalibration.pitchDeg,
+          yaw: cameraCalibration.yawDeg,
+          roll: cameraCalibration.rollDeg
+        };
+        cameraCalibration.calibrationTimestamp = Date.now();
+        setCalibrationStatus('CALIBRATED');
+
+        if (btnQuickRecalibrate) {
+          btnQuickRecalibrate.textContent = '✓ RECALIBRATED';
+          btnQuickRecalibrate.classList.remove('warn');
+          setTimeout(() => { btnQuickRecalibrate.textContent = '⚡ RECALIB'; }, 1800);
+        }
+        console.log(`[CALIBRATION] ${isAuto ? 'Auto-recalibrated' : 'Operator recalibrated'} camera successfully.`);
+      }
+
+      // Adopt Sensor Pose button
+      btnAdoptSensorPose?.addEventListener('click', () => {
+        if (!sensorActive && sensorEventCount === 0) {
+          alert('Sensors currently inactive. Move the device or enable permissions.');
+          return;
+        }
+        inpCamPitch.value = currentPose.pitch.toFixed(1);
+        inpCamYaw.value = currentPose.yaw.toFixed(1);
+        inpCamRoll.value = currentPose.roll.toFixed(1);
+        btnAdoptSensorPose.textContent = '✓ CAPTURED';
+        setTimeout(() => { btnAdoptSensorPose.textContent = 'USE SENSOR'; }, 1500);
+      });
+
+      // Panel & Button listeners
+      btnCalibrateCamera?.addEventListener('click', executeCalibration);
+      btnPanelRecalibrate?.addEventListener('click', () => executeRecalibration(false));
+      btnQuickRecalibrate?.addEventListener('click', () => executeRecalibration(false));
+      btnBannerRecalibrate?.addEventListener('click', () => executeRecalibration(false));
+
+      btnToggleCalibPanel?.addEventListener('click', () => {
+        if (!calibrationPanel) return;
+        const isHidden = calibrationPanel.classList.contains('hidden');
+        if (isHidden) {
+          calibrationPanel.classList.remove('hidden');
+          btnToggleCalibPanel.classList.remove('off');
+        } else {
+          calibrationPanel.classList.add('hidden');
+          btnToggleCalibPanel.classList.add('off');
+        }
+      });
+
+      btnCloseCalibPanel?.addEventListener('click', () => {
+        if (calibrationPanel) calibrationPanel.classList.add('hidden');
+        if (btnToggleCalibPanel) btnToggleCalibPanel.classList.add('off');
+      });
+
+      btnToggleAutoRecalib?.addEventListener('click', () => {
+        autoRecalibrate = !autoRecalibrate;
+        btnToggleAutoRecalib.textContent = autoRecalibrate ? 'AUTO: ON' : 'AUTO: OFF';
+        btnToggleAutoRecalib.classList.toggle('off', !autoRecalibrate);
+        btnToggleAutoRecalib.classList.toggle('ok', autoRecalibrate);
+      });
+
+      btnToggleDebugView?.addEventListener('click', () => {
+        if (!cameraDebugPanel) return;
+        const isHidden = cameraDebugPanel.classList.contains('hidden');
+        if (isHidden) {
+          cameraDebugPanel.classList.remove('hidden');
+          btnToggleDebugView.classList.remove('off');
+          btnToggleDebugView.classList.add('ok');
+          updateDebugDiagnostics();
+        } else {
+          cameraDebugPanel.classList.add('hidden');
+          btnToggleDebugView.classList.add('off');
+          btnToggleDebugView.classList.remove('ok');
+        }
+      });
+
+      // Reference Object change handler
+      selRefObject?.addEventListener('change', () => {
+        if (selRefObject.value === 'person') {
+          inpRefHeight.value = '1.70';
+        } else if (selRefObject.value === 'vehicle') {
+          inpRefHeight.value = '1.55';
+        }
+      });
+
+      // ============================================================
+      // 5. GROUND-PLANE & REFERENCE MEASUREMENT ESTIMATION
+      // ============================================================
+      function estimateObjectMetrics(rawBbox, classLabel, actualW, actualH) {
+        const wPx = Math.round(rawBbox.w * actualW);
+        const hPx = Math.round(rawBbox.h * actualH);
+
+        // Center ray horizontal angle relative to optical axis
+        const xc = rawBbox.x + rawBbox.w / 2;
+        const hFov = cameraCalibration.horizontalFovDeg;
+        const vFov = cameraCalibration.verticalFovDeg;
+        const horizontalAngleDeg = Number(((xc - 0.5) * hFov).toFixed(1));
+
+        // If not calibrated, return image-space measurements only
+        if (cameraCalibration.status !== 'CALIBRATED') {
+          const distPx = Math.round(Math.hypot((xc - 0.5) * actualW, (rawBbox.y + rawBbox.h / 2 - 0.5) * actualH));
+          return {
+            mode: 'RELATIVE_PX',
+            isCalibrated: false,
+            pixelWidth: wPx,
+            pixelHeight: hPx,
+            horizontalAngleDeg,
+            pixelDistance: distPx,
+            displayDistance: `${distPx} px`,
+            displayHeight: `${hPx} px`,
+            statusLabel: 'UNCALIBRATED'
+          };
+        }
+
+        // --- Ground-Plane Pinhole Geometry (CALIBRATED ESTIMATION) ---
+        const hCam = cameraCalibration.cameraHeightM;
+        const pitch = cameraCalibration.pitchDeg;
+        const yBottom = rawBbox.y + rawBbox.h;
+        const yTop = rawBbox.y;
+
+        // Angular offset from optical axis to bottom edge (ground contact point)
+        const deltaPhiBottom = (yBottom - 0.5) * vFov;
+        const groundRayAngleDeg = pitch + deltaPhiBottom;
+
+        let estimatedDistanceM = null;
+        let estimatedHeightM = null;
+
+        // If ground ray intersects ground in front of camera (angle > 1.5° below horizon)
+        if (groundRayAngleDeg > 1.5) {
+          const groundRad = (groundRayAngleDeg * Math.PI) / 180;
+          const dGround = hCam / Math.tan(groundRad);
+
+          // Ray to top of object
+          const deltaPhiTop = (yTop - 0.5) * vFov;
+          const topRayAngleDeg = pitch + deltaPhiTop;
+          const topRad = (topRayAngleDeg * Math.PI) / 180;
+
+          // Object height: hCam - dGround * tan(topRayAngle)
+          const objH = hCam - (dGround * Math.tan(topRad));
+
+          if (dGround >= 0.5 && dGround <= 120 && objH > 0.15 && objH < 15) {
+            estimatedDistanceM = Number(dGround.toFixed(2));
+            estimatedHeightM = Number(objH.toFixed(2));
+          }
+        }
+
+        // Fallback to reference-based pinhole scaling if ground-plane geometry is grazing/horizon
+        if (estimatedDistanceM === null) {
+          const isPerson = (classLabel || '').toLowerCase() === 'person';
+          const refH = isPerson ? 1.70 : cameraCalibration.referenceHeightM;
+          const focalPx = actualH / (2 * Math.tan((vFov / 2) * Math.PI / 180));
+          if (hPx > 10) {
+            const dEst = (refH * focalPx) / hPx;
+            const hEst = (hPx * dEst) / focalPx;
+            if (dEst > 0.5 && dEst < 150) {
+              estimatedDistanceM = Number(dEst.toFixed(2));
+              estimatedHeightM = Number(hEst.toFixed(2));
+            }
+          }
+        }
+
+        if (estimatedDistanceM !== null && estimatedHeightM !== null) {
+          return {
+            mode: 'CALIBRATED_ESTIMATE',
+            isCalibrated: true,
+            pixelWidth: wPx,
+            pixelHeight: hPx,
+            horizontalAngleDeg,
+            estimatedDistanceM,
+            estimatedHeightM,
+            displayDistance: `${estimatedDistanceM} m (Est.)`,
+            displayHeight: `${estimatedHeightM} m (Est.)`,
+            statusLabel: 'CALIBRATED ESTIMATE'
+          };
+        }
+
+        // If geometry calculation was mathematically unreliable
+        return {
+          mode: 'CALIBRATED_ESTIMATE',
+          isCalibrated: true,
+          pixelWidth: wPx,
+          pixelHeight: hPx,
+          horizontalAngleDeg,
+          estimatedDistanceM: null,
+          estimatedHeightM: null,
+          displayDistance: 'ESTIMATION UNAVAILABLE',
+          displayHeight: 'ESTIMATION UNAVAILABLE',
+          statusLabel: 'ESTIMATION UNAVAILABLE'
+        };
+      }
+
+      // ============================================================
+      // 6. CAMERA STREAM & TRANSPORT SETUP
+      // ============================================================
       function mapCameraError(err) {
         if (!err) return 'Unknown camera error';
         if (err.name === 'NotAllowedError') return 'Camera permission denied. Allow camera access in browser site settings and reload.';
@@ -651,7 +1597,6 @@
         return `${err.name}: ${err.message}`;
       }
 
-      // 1. Camera Initialization via getUserMedia
       async function startCamera(facing) {
         clearError();
         videoReady = false;
@@ -660,7 +1605,7 @@
         if (!window.isSecureContext) {
           const isLocal = location.hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname);
           const portStr = isLocal ? ':3443' : (location.port && location.port !== '80' && location.port !== '443' ? `:${location.port}` : '');
-          const err = `CAMERA ACCESS BLOCKED — this page is not a secure context. Open https://${location.hostname}${portStr}/mobile-cam.html over HTTPS.`;
+          const err = `CAMERA ACCESS BLOCKED — this page is not a secure context. Open https://${location.hostname}${portStr}/mobile-cam over HTTPS.`;
           setStatus(statCamFeed, 'error', 'Stopped');
           showError(err);
           console.error('[MOBILE-CAM] Insecure context:', err);
@@ -671,11 +1616,8 @@
           const err = 'Fatal: Camera API (getUserMedia) not supported in this browser or context.';
           setStatus(statCamFeed, 'error', 'Stopped');
           showError(err);
-          console.error('[MOBILE-CAM] No getUserMedia:', err);
           return;
         }
-
-        console.log('[MOBILE-CAM] Requesting camera permission');
 
         if (currentStream) {
           currentStream.getTracks().forEach(t => t.stop());
@@ -693,17 +1635,19 @@
           };
 
           currentStream = await navigator.mediaDevices.getUserMedia(constraints);
-          console.log('[MOBILE-CAM] Camera permission granted');
-
           video.srcObject = currentStream;
           await video.play();
 
-          console.log('[MOBILE-CAM] Video started');
           videoReady = true;
           isStreaming = true;
           btnToggleCamera.textContent = 'Stop Cam';
           btnToggleCamera.classList.remove('warn');
-          setStatus(statCamFeed, 'ok', `Active (${video.videoWidth || '720p'})`);
+          setStatus(statCamFeed, 'ok', 'Active');
+
+          const actualW = video.videoWidth || 1280;
+          const actualH = video.videoHeight || 720;
+          if (statVideoRes) statVideoRes.textContent = `${actualW} × ${actualH}`;
+          if (dbgRes) dbgRes.textContent = `${actualW} × ${actualH}`;
         } catch (err) {
           videoReady = false;
           isStreaming = false;
@@ -728,30 +1672,29 @@
         btnToggleCamera.textContent = 'Start Cam';
         btnToggleCamera.classList.add('warn');
         setStatus(statCamFeed, 'error', 'Stopped');
+        if (statVideoRes) statVideoRes.textContent = '--';
         console.log('[MOBILE-CAM] Camera stopped by operator');
       }
 
       // Camera Controls
-      btnToggleCamera.addEventListener('click', () => {
-        if (isStreaming) {
-          stopCamera();
-        } else {
-          startCamera(currentFacing);
-        }
+      btnToggleCamera?.addEventListener('click', () => {
+        if (isStreaming) stopCamera();
+        else startCamera(currentFacing);
       });
 
-      btnSwitchCam.addEventListener('click', async () => {
+      btnSwitchCam?.addEventListener('click', async () => {
         currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
+        if (dbgFacing) dbgFacing.textContent = currentFacing;
         await startCamera(currentFacing);
       });
 
-      btnTogglePose.addEventListener('click', () => {
+      btnTogglePose?.addEventListener('click', () => {
         if (!poseAvailable) return;
         poseEnabled = !poseEnabled;
         updatePoseStatusUI();
       });
 
-      btnToggleOverlay.addEventListener('click', () => {
+      btnToggleOverlay?.addEventListener('click', () => {
         overlayEnabled = !overlayEnabled;
         if (overlayEnabled) {
           btnToggleOverlay.classList.remove('off');
@@ -763,7 +1706,7 @@
         }
       });
 
-      // Tactical Zoom Bar (Cycle: 1.0x -> 2.0x -> 3.0x -> 1.0x) - advanced-android-camera style
+      // Tactical Zoom Bar
       async function cycleZoom() {
         const nextZoom = (currentZoom === 1.0) ? 2.0 : (currentZoom === 2.0 ? 3.0 : 1.0);
         currentZoom = nextZoom;
@@ -774,11 +1717,8 @@
             if (caps.zoom) {
               await track.applyConstraints({ advanced: [{ zoom: Math.min(caps.zoom.max || 5, Math.max(caps.zoom.min || 1, nextZoom)) }] });
             }
-          } catch (e) {
-            console.log('[MOBILE-CAM] Hardware zoom not supported:', e.message);
-          }
+          } catch (e) {}
         }
-        // Digital CSS zoom fallback ensuring full compatibility across all mobile browsers
         video.style.transform = `scale(${nextZoom})`;
         video.style.transformOrigin = 'center center';
         video.style.transition = 'transform 0.25s ease-out';
@@ -804,12 +1744,11 @@
             btnToggleTorch.textContent = '⚡ Flash: N/A';
             btnToggleTorch.classList.add('off');
           }
-          console.warn('[MOBILE-CAM] Torch not supported:', e.message);
         }
       }
       btnToggleTorch?.addEventListener('click', toggleTorch);
 
-      // Detection Filter Mode (All Objects vs Persons Only)
+      // Detection Filter Mode
       btnToggleDetectFilter?.addEventListener('click', () => {
         detectFilterMode = (detectFilterMode === 'all') ? 'person' : 'all';
         btnToggleDetectFilter.textContent = (detectFilterMode === 'all') ? '🎯 ALL OBJS' : '🎯 PERSONS';
@@ -835,7 +1774,6 @@
       });
 
       let heartbeatTimer = null;
-
       function sendHeartbeat() {
         sendMobilePayload({
           type: 'MOBILE_HEARTBEAT',
@@ -862,9 +1800,7 @@
           try {
             peerConn.send(payload);
             delivered = true;
-          } catch (e) {
-            console.warn('[PEER] send error:', e);
-          }
+          } catch (e) {}
         }
         if (bc) {
           try {
@@ -875,105 +1811,70 @@
         return delivered;
       }
 
-      // 2a. WebRTC PeerJS Uplink (For Cloud Deployments like Vercel)
       function connectPeerJs(targetId) {
         if (!targetId || typeof Peer === 'undefined') return;
         try {
-          console.log('[MOBILE-CAM] Initializing WebRTC PeerJS uplink to C2:', targetId);
           peer = new Peer();
           peer.on('open', (myId) => {
-            console.log('[MOBILE-CAM] WebRTC Local Peer ID:', myId);
             const conn = peer.connect(targetId, { reliable: true });
             conn.on('open', () => {
-              console.log('[MOBILE-CAM] WebRTC Connected to C2 console peer:', targetId);
               peerConn = conn;
               setStatus(statServer, 'ok', 'Connected (Cloud Peer)');
-              debugWsUrl.textContent = `webrtc://${targetId.substring(0, 10)}...`;
-
-              const handshake = {
+              if (debugWsUrl) debugWsUrl.textContent = `webrtc://${targetId.substring(0, 10)}...`;
+              sendMobilePayload({
                 type: 'MOBILE_CAMERA_CONNECT',
                 cameraId: 'CAM-MOBILE-01',
                 device: 'mobile'
-              };
-              sendMobilePayload(handshake);
-
+              });
               if (heartbeatTimer) clearInterval(heartbeatTimer);
               heartbeatTimer = setInterval(sendHeartbeat, 2500);
             });
             conn.on('close', () => {
-              console.warn('[MOBILE-CAM] WebRTC Peer connection closed');
               peerConn = null;
-              if (!ws || ws.readyState !== WebSocket.OPEN) {
-                setStatus(statServer, 'error', 'Disconnected');
-              }
-            });
-            conn.on('error', (err) => {
-              console.warn('[MOBILE-CAM] WebRTC Peer connection error:', err);
+              if (!ws || ws.readyState !== WebSocket.OPEN) setStatus(statServer, 'error', 'Disconnected');
             });
           });
-          peer.on('error', (err) => {
-            console.warn('[MOBILE-CAM] PeerJS broker error:', err.type || err);
-          });
-        } catch (e) {
-          console.warn('[MOBILE-CAM] PeerJS init exception:', e);
-        }
+        } catch (e) {}
       }
 
-      // 2b. WebSocket Connection (Derived from location or targetServer parameter)
       function connectWebSocket() {
         if (reconnectTimer) clearTimeout(reconnectTimer);
-        
         let wsUrl;
         if (targetServer) {
           const wsProtocol = targetServer.startsWith('https') ? 'wss:' : (targetServer.includes(':3443') ? 'wss:' : 'ws:');
           const cleanHost = targetServer.replace(/^https?:\/\//, '');
           wsUrl = `${wsProtocol}//${cleanHost}`;
         } else {
-          // If running on a cloud deployment like Vercel and no local server param provided,
-          // don't attempt WebSocket since serverless hosting doesn't support persistent WS
           if (location.hostname.endsWith('vercel.app')) {
-            console.log('[MOBILE-CAM] Running on Vercel cloud; using WebRTC PeerJS uplink');
-            if (targetPeerId) {
-              connectPeerJs(targetPeerId);
-            } else {
+            if (targetPeerId) connectPeerJs(targetPeerId);
+            else {
               setStatus(statServer, 'warn', 'Cloud Standby');
-              debugWsUrl.textContent = 'cloud://webrtc-standby';
+              if (debugWsUrl) debugWsUrl.textContent = 'cloud://webrtc-standby';
             }
             return;
           }
           const protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
           wsUrl = `${protocol}//${location.host}`;
         }
-        
-        debugWsUrl.textContent = wsUrl;
-        console.log('[MOBILE-CAM] Connecting WebSocket to ' + wsUrl);
+
+        if (debugWsUrl) debugWsUrl.textContent = wsUrl;
         setStatus(statServer, 'warn', 'Connecting...');
 
         try {
           ws = new WebSocket(wsUrl);
-
           ws.onopen = () => {
-            console.log('[MOBILE-CAM] WebSocket connected');
             setStatus(statServer, 'ok', 'Connected');
             reconnectDelay = 2000;
-
-            const handshake = {
+            sendMobilePayload({
               type: 'MOBILE_CAMERA_CONNECT',
               cameraId: 'CAM-MOBILE-01',
               device: 'mobile'
-            };
-            sendMobilePayload(handshake);
-            console.log('[MOBILE-CAM] Sent MOBILE_CAMERA_CONNECT handshake');
-
+            });
             if (heartbeatTimer) clearInterval(heartbeatTimer);
             heartbeatTimer = setInterval(sendHeartbeat, 2500);
           };
-
           ws.onclose = () => {
-            console.warn(`[MOBILE-CAM] WebSocket closed, retrying in ${reconnectDelay}ms...`);
-            if (!peerConn || !peerConn.open) {
-              setStatus(statServer, 'error', 'Disconnected');
-            }
+            if (!peerConn || !peerConn.open) setStatus(statServer, 'error', 'Disconnected');
             if (heartbeatTimer) {
               clearInterval(heartbeatTimer);
               heartbeatTimer = null;
@@ -981,47 +1882,55 @@
             reconnectTimer = setTimeout(connectWebSocket, reconnectDelay);
             reconnectDelay = Math.min(10000, reconnectDelay * 1.5);
           };
-
-          ws.onerror = (e) => {
-            console.warn('[MOBILE-CAM] WebSocket error event');
-          };
+          ws.onerror = () => {};
         } catch (e) {
-          console.error('[MOBILE-CAM] WebSocket connection exception:', e);
-          if (heartbeatTimer) {
-            clearInterval(heartbeatTimer);
-            heartbeatTimer = null;
-          }
           reconnectTimer = setTimeout(connectWebSocket, 3000);
         }
       }
 
-      // 3. Load COCO-SSD Model
+      // ============================================================
+      // 7. AI INFERENCE & DETECTION MODELS
+      // ============================================================
       async function loadCocoModel() {
-        console.log('[MOBILE-CAM] Loading COCO-SSD');
         setStatus(statAiModel, 'warn', 'Loading COCO-SSD...');
         try {
-          if (typeof cocoSsd === 'undefined') {
-            throw new Error('COCO-SSD CDN script not ready');
-          }
+          if (typeof cocoSsd === 'undefined') throw new Error('COCO-SSD CDN not ready');
           cocoModel = await cocoSsd.load({ base: 'mobilenet_v2' });
           cocoReady = true;
-          console.log('[MOBILE-CAM] COCO-SSD ready');
-          setStatus(statAiModel, 'ok', '● COCO-SSD READY');
+          setStatus(statAiModel, 'ok', 'COCO-SSD READY');
         } catch (err) {
           cocoReady = false;
-          console.error('[MOBILE-CAM] Failed to load COCO-SSD:', err.message);
           setStatus(statAiModel, 'error', 'Failed');
           showError('AI Model Load Failed: ' + err.message);
         }
       }
 
-      // 4. Load MoveNet MultiPose Lightning Model
+      function updatePoseStatusUI() {
+        if (!poseAvailable) {
+          if (btnTogglePose) {
+            btnTogglePose.classList.add('danger');
+            btnTogglePose.textContent = 'Pose: N/A';
+          }
+          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD ONLY';
+        } else if (!poseEnabled) {
+          if (btnTogglePose) {
+            btnTogglePose.classList.add('off');
+            btnTogglePose.textContent = 'Pose: OFF';
+          }
+          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD (POSE OFF)';
+        } else if (poseReady) {
+          if (btnTogglePose) {
+            btnTogglePose.classList.remove('off', 'danger');
+            btnTogglePose.textContent = 'Pose: ON';
+          }
+          if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD + MOVENET';
+        }
+      }
+
       async function loadPoseModel() {
-        console.log('[MOBILE-CAM] Loading MoveNet MultiPose...');
-        setStatus(statPoseModel, 'warn', 'Loading MoveNet...');
         try {
           if (typeof poseDetection === 'undefined' || !poseDetection.createDetector) {
-            throw new Error('poseDetection library not available');
+            throw new Error('poseDetection library unavailable');
           }
           poseDetector = await poseDetection.createDetector(
             poseDetection.SupportedModels.MoveNet,
@@ -1029,10 +1938,8 @@
           );
           poseReady = true;
           poseAvailable = true;
-          console.log('[MOBILE-CAM] MoveNet MultiPose ready');
           updatePoseStatusUI();
         } catch (err) {
-          console.warn('[MOBILE-CAM] MoveNet unavailable, falling back to COCO-SSD only:', err.message);
           poseDetector = null;
           poseReady = false;
           poseAvailable = false;
@@ -1040,7 +1947,6 @@
         }
       }
 
-      // IoU Matching between COCO-SSD box and MoveNet pose keypoint bounding box
       function computeIoU(b1, b2) {
         const x1 = Math.max(b1.x, b2.x);
         const y1 = Math.max(b1.y, b2.y);
@@ -1051,7 +1957,9 @@
         return unionArea > 0 ? (interArea / unionArea) : 0;
       }
 
-      // 5. On-Device Combined Detection & Pose Analytics Loop
+      // ============================================================
+      // 8. COMBINED DETECTION, TRACKING & MOTION COMPENSATION LOOP
+      // ============================================================
       async function detectionLoop() {
         const cycleStart = performance.now();
 
@@ -1061,7 +1969,20 @@
             const actualH = video.videoHeight;
             const now = Date.now();
 
-            // Run COCO-SSD multi-object detection (detect all objects or filtered by mode)
+            // Calculate camera motion displacement in normalized image coordinates (for motion compensation)
+            // Screen shift from yaw: dx_cam = - (delta_yaw / HFOV)
+            // Screen shift from pitch: dy_cam = (delta_pitch / VFOV)
+            const dYawCycle = ((currentPose.yaw - prevPose.yaw + 540) % 360) - 180;
+            const dPitchCycle = currentPose.pitch - prevPose.pitch;
+            const hFov = cameraCalibration.horizontalFovDeg;
+            const vFov = cameraCalibration.verticalFovDeg;
+
+            cameraDeltaFromPrevFrame = {
+              dx: Number((- (dYawCycle / hFov)).toFixed(4)),
+              dy: Number((dPitchCycle / vFov).toFixed(4))
+            };
+
+            // Run COCO-SSD multi-object detection
             const preds = await cocoModel.detect(video);
             const filteredPreds = (preds || []).filter(p => {
               if ((p.score || 0) < 0.35) return false;
@@ -1069,7 +1990,7 @@
               return true;
             });
 
-            // Run MoveNet MultiPose estimation only if persons exist and pose is active
+            // Run MoveNet MultiPose for person detections if enabled
             let poses = [];
             const hasPerson = filteredPreds.some(p => p.class === 'person');
             const poseActive = poseEnabled && poseReady && poseDetector && hasPerson;
@@ -1077,12 +1998,11 @@
               try {
                 poses = await poseDetector.estimatePoses(video);
               } catch (poseErr) {
-                console.warn('[MOBILE-CAM] Pose estimate cycle error:', poseErr);
                 poses = [];
               }
             }
 
-            // Local Frame-to-Frame Track Association & Analytics
+            // Local Frame-to-Frame Track Association
             const currentDetections = [];
             const matchedLocalIds = new Set();
 
@@ -1099,9 +2019,9 @@
                 y: rawBbox.y + rawBbox.h / 2
               };
 
-              // Local Association to Previous Tracks by Nearest Centroid & Class
+              // Associate with nearest existing local track
               let bestTrackId = null;
-              let bestDist = 0.25; // Normalized space association gate
+              let bestDist = 0.25;
               localTracks.forEach((track, id) => {
                 if (matchedLocalIds.has(id)) return;
                 const sameClassBonus = (track.classLabel === p.class) ? 0.05 : 0;
@@ -1128,22 +2048,41 @@
               const track = localTracks.get(bestTrackId);
               track.classLabel = p.class;
 
-              // Exponential Smoothing on Center Position (alpha ~ 0.3)
+              // Smooth centroid
               const alpha = 0.3;
               const prevSmoothed = { ...track.smoothedCenter };
               track.smoothedCenter.x = Number((alpha * rawCenter.x + (1 - alpha) * prevSmoothed.x).toFixed(4));
               track.smoothedCenter.y = Number((alpha * rawCenter.y + (1 - alpha) * prevSmoothed.y).toFixed(4));
 
-              // Compute Movement Deltas in Image-Space (Normalized 0-1)
+              // Compute raw movement delta
               const dx = Number((track.smoothedCenter.x - prevSmoothed.x).toFixed(4));
               const dy = Number((track.smoothedCenter.y - prevSmoothed.y).toFixed(4));
-              const distance = Number(Math.hypot(dx, dy).toFixed(4));
+              const rawDistance = Math.hypot(dx, dy);
 
-              // Deadzone around (0,0) to prevent spurious direction flapping
-              const DEADZONE = 0.008;
+              // ============================================================
+              // CRITICAL: SEPARATE CAMERA MOTION FROM OBJECT MOTION
+              // When camera moves, subtract the camera shift from object delta.
+              // ============================================================
+              let compDx = dx;
+              let compDy = dy;
+              if (cameraPoseState === 'MOVING') {
+                compDx = Number((dx - cameraDeltaFromPrevFrame.dx).toFixed(4));
+                compDy = Number((dy - cameraDeltaFromPrevFrame.dy).toFixed(4));
+              }
+
+              const compDistance = Number(Math.hypot(compDx, compDy).toFixed(4));
+
+              // When camera is moving, use an expanded deadzone so camera jitter
+              // does NOT classify stationary persons as moving!
+              const BASE_DEADZONE = 0.008;
+              const effectiveDeadzone = (cameraPoseState === 'MOVING') ? 0.024 : BASE_DEADZONE;
+
               let direction = 'STATIONARY';
-              if (distance >= DEADZONE) {
-                const angleDeg = Math.atan2(dy, dx) * 180 / Math.PI;
+              let objectMotionState = 'STATIONARY';
+
+              if (compDistance >= effectiveDeadzone) {
+                objectMotionState = 'MOVING';
+                const angleDeg = Math.atan2(compDy, compDx) * 180 / Math.PI;
                 if (angleDeg >= -22.5 && angleDeg < 22.5) direction = 'RIGHT';
                 else if (angleDeg >= 22.5 && angleDeg < 67.5) direction = 'DOWN_RIGHT';
                 else if (angleDeg >= 67.5 && angleDeg < 112.5) direction = 'DOWN';
@@ -1155,10 +2094,10 @@
               }
 
               const elapsedSec = Math.max(0.01, (now - track.lastTimestamp) / 1000);
-              const speedEstimate = Number((distance / elapsedSec).toFixed(3));
+              const speedEstimate = Number((compDistance / elapsedSec).toFixed(3));
               track.lastTimestamp = now;
 
-              // MoveNet Pose Association by IoU (for Person detections only)
+              // Pose Matching (Persons)
               let matchedPose = null;
               if (isPerson && poseActive && poses.length > 0) {
                 let bestIoU = 0.08;
@@ -1178,7 +2117,7 @@
                 });
               }
 
-              // Compute Body Measurements & Motion for Persons
+              // Compute Body Measurements for Persons
               let bodyMeasurements = null;
               let bodyMotion = null;
               let posePayload = null;
@@ -1207,14 +2146,14 @@
                   ? Math.round(Math.hypot(lw.x - rw.x, lw.y - rw.y)) : null;
 
                 bodyMeasurements = {
-                  calibrated: false,
+                  calibrated: cameraCalibration.status === 'CALIBRATED',
                   shoulderWidthPx,
                   hipWidthPx,
                   torsoLengthPx,
                   armSpanPx
                 };
 
-                // Compute Frame-to-Frame Limb Displacement
+                // MoveNet Keypoint History displacement
                 let armDisp = 0, armCount = 0;
                 let legDisp = 0, legCount = 0;
                 let torsoDisp = 0, torsoCount = 0;
@@ -1254,13 +2193,17 @@
                   }
                 });
 
+                // Compensate limb motion by camera delta if camera is moving
                 const armMovement = armCount > 0 ? Number((armDisp / armCount).toFixed(4)) : 0;
                 const legMovement = legCount > 0 ? Number((legDisp / legCount).toFixed(4)) : 0;
                 const torsoMovement = torsoCount > 0 ? Number((torsoDisp / torsoCount).toFixed(4)) : 0;
-                const motionState = (distance >= DEADZONE || torsoMovement > 0.015) ? 'MOVING' : 'STATIONARY';
+
+                // Only classify person as MOVING from body motion if torso or centroid actually moved beyond deadzone
+                const effectiveTorsoThreshold = (cameraPoseState === 'MOVING') ? 0.035 : 0.015;
+                const finalMotionState = (objectMotionState === 'MOVING' || torsoMovement > effectiveTorsoThreshold) ? 'MOVING' : 'STATIONARY';
 
                 bodyMotion = {
-                  state: motionState,
+                  state: finalMotionState,
                   armMovement,
                   legMovement,
                   torsoMovement
@@ -1277,12 +2220,15 @@
                 };
               } else {
                 bodyMotion = {
-                  state: distance >= DEADZONE ? 'MOVING' : 'STATIONARY',
+                  state: objectMotionState,
                   armMovement: null,
                   legMovement: null,
                   torsoMovement: null
                 };
               }
+
+              // Compute Physical / Image-space Measurements
+              const metrics = estimateObjectMetrics(rawBbox, p.class, actualW, actualH);
 
               currentDetections.push({
                 localId: bestTrackId,
@@ -1291,14 +2237,15 @@
                 bbox: rawBbox,
                 movement: {
                   center: track.smoothedCenter,
-                  delta: { x: dx, y: dy },
-                  distance,
+                  delta: { x: compDx, y: compDy },
+                  distance: compDistance,
                   direction,
                   speedEstimate
                 },
                 bodyMeasurements,
                 bodyMotion,
                 pose: posePayload,
+                metrics,
                 rawPoseKeypoints: isPerson && matchedPose ? matchedPose.keypoints : null
               });
             });
@@ -1310,31 +2257,42 @@
               }
             });
 
-            // Capture lightweight video preview frame for the dashboard center feed (~15KB JPEG)
+            // Video preview frame for C2 focal center
             let frameImage = null;
             if (previewCtx && video.videoWidth > 0) {
               previewCtx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
               frameImage = previewCanvas.toDataURL('image/jpeg', 0.50);
             }
 
-            // Transmit Structured Multi-Object Payload (Metadata + Frame)
+            // Structured Multi-Object Payload with Calibration & Measurements
             const payload = {
               type: 'MOBILE_DETECTION',
               cameraId: 'CAM-MOBILE-01',
               timestamp: now,
-              frameImage: frameImage,
+              frameImage,
               frameWidth: actualW,
               frameHeight: actualH,
+              calibrationStatus: cameraCalibration.status,
+              cameraPose: cameraPoseState,
               detections: currentDetections.map(d => ({
                 classLabel: d.classLabel,
                 confidence: d.confidence,
-                bbox: d.bbox
+                bbox: d.bbox,
+                localId: d.localId,
+                direction: d.movement.direction,
+                state: d.bodyMotion ? d.bodyMotion.state : 'TRACKED',
+                metrics: {
+                  mode: d.metrics.mode,
+                  isCalibrated: d.metrics.isCalibrated,
+                  pixelWidth: d.metrics.pixelWidth,
+                  pixelHeight: d.metrics.pixelHeight,
+                  horizontalAngleDeg: d.metrics.horizontalAngleDeg,
+                  estimatedDistanceM: d.metrics.estimatedDistanceM,
+                  estimatedHeightM: d.metrics.estimatedHeightM
+                }
               }))
             };
-            const sent = sendMobilePayload(payload);
-            if (sent && currentDetections.length > 0) {
-              console.log(`[MOBILE-CAM] Detections sent: ${currentDetections.length} objects (${currentDetections.map(d => d.classLabel).join(', ')})`);
-            }
+            sendMobilePayload(payload);
 
             // Update Phone Status HUD & Live Telemetry Tray
             if (statPersonCount) {
@@ -1351,7 +2309,7 @@
             }
             renderTelemetryTray(currentDetections, actualW, actualH);
 
-            // Render Local Canvas Overlays (Bounding Boxes, Direction Vectors, Skeletons)
+            // Render Local Canvas Overlays
             if (overlayEnabled) {
               renderHudOverlay(currentDetections, actualW, actualH);
             } else {
@@ -1369,7 +2327,6 @@
           fastCycles = 0;
           if (slowCycles >= 3 && currentInterval < 450) {
             currentInterval = Math.min(500, currentInterval + 75);
-            console.log(`[MOBILE-CAM] Performance adaptation: cycle time ${Math.round(cycleTime)}ms, widening interval to ${currentInterval}ms`);
             slowCycles = 0;
           }
         } else if (cycleTime < 180) {
@@ -1385,14 +2342,15 @@
           statCadence.textContent = `${currentInterval}ms (~${Math.round(1000/currentInterval)}Hz)`;
         }
 
-        // Schedule next cycle (chained setTimeout guarantees non-overlapping execution: setTimeout(detectionLoop, 175) base)
         setTimeout(detectionLoop, currentInterval);
       }
 
-      // Render Tactical Telemetry Cards in Drawer
+      // ============================================================
+      // 9. TELEMETRY TRAY & CANVAS OVERLAYS
+      // ============================================================
       function renderTelemetryTray(detections, actualW, actualH) {
         if (!personsTelemetryList) return;
-        telemetryTrayCount.textContent = `${detections.length} TRACKED`;
+        if (telemetryTrayCount) telemetryTrayCount.textContent = `${detections.length} TRACKED`;
 
         if (detections.length === 0) {
           personsTelemetryList.innerHTML = `
@@ -1405,38 +2363,41 @@
 
         personsTelemetryList.innerHTML = detections.map(d => {
           const cl = (d.classLabel || 'object').toUpperCase();
-          const wPx = Math.round(d.bbox.w * actualW);
-          const hPx = Math.round(d.bbox.h * actualH);
           const conf = Math.round(d.confidence * 100);
           const m = d.movement || {};
-          const meas = d.bodyMeasurements || {};
           const mot = d.bodyMotion || {};
-          const hasPose = !!d.pose;
           const isPerson = (d.classLabel || '').toLowerCase() === 'person';
+          const met = d.metrics || {};
+          const isCal = met.isCalibrated;
+
+          const badgeHtml = isCal
+            ? `<span class="badge-calibrated">CALIBRATED ESTIMATE</span>`
+            : `<span class="badge-uncalibrated">RELATIVE / PX</span>`;
+
+          const distanceDisplay = met.displayDistance || `${met.pixelDistance || 0} px`;
+          const heightDisplay = met.displayHeight || `${met.pixelHeight || 0} px`;
+          const angleDisplay = `${met.horizontalAngleDeg >= 0 ? '+' : ''}${met.horizontalAngleDeg || 0}°`;
 
           return `
             <div class="person-card" style="border-left-color:${isPerson ? 'var(--cyan)' : 'var(--green)'}">
               <div class="person-card-top">
                 <span class="person-id-tag">[${cl}] ${d.localId}</span>
                 <span style="color:var(--green)">${conf}% CONF</span>
-                <span style="font-size:8px;color:${hasPose ? 'var(--cyan)' : 'var(--text-dim)'}">
-                  ${hasPose ? '● POSE: TRACKED' : (isPerson ? '○ POSE: N/A' : 'OBJECT')}
-                </span>
+                ${badgeHtml}
               </div>
               <div class="person-metrics">
-                <div>SIZE: <strong>${wPx}x${hPx}px</strong></div>
+                <div>PIXEL SIZE: <strong>${met.pixelWidth || 0}×${met.pixelHeight || 0}px</strong></div>
+                <div>DIST: <strong style="color:${isCal ? 'var(--cyan)' : 'var(--amber)'}">${distanceDisplay}</strong></div>
+                <div>HEIGHT: <strong style="color:${isCal ? 'var(--cyan)' : 'var(--amber)'}">${heightDisplay}</strong></div>
+                <div>ANGLE: <strong style="color:var(--cyan)">${angleDisplay}</strong></div>
                 <div>DIR: <strong style="color:var(--cyan)">${m.direction || 'STATIONARY'}</strong></div>
                 <div>STATE: <strong style="color:${mot.state === 'MOVING' ? 'var(--green)' : 'var(--amber)'}">${mot.state || 'TRACKED'}</strong></div>
-                <div>SPEED: <strong>${m.speedEstimate || 0} norm/s</strong></div>
-                ${isPerson && meas.shoulderWidthPx ? `<div>SHOULDER: <strong>${meas.shoulderWidthPx}px</strong></div>` : `<div>CLASS: <strong style="color:var(--cyan)">${cl}</strong></div>`}
-                ${isPerson && meas.hipWidthPx ? `<div>HIP: <strong>${meas.hipWidthPx}px</strong></div>` : `<div>SENSOR: <strong>CAM-MOBILE</strong></div>`}
               </div>
             </div>
           `;
         }).join('');
       }
 
-      // Render Canvas HUD Overlay (BBoxes, Corner Brackets, Movement Arrows, MoveNet Skeleton)
       function renderHudOverlay(detections, actualW, actualH) {
         if (canvas.width !== canvas.clientWidth || canvas.height !== canvas.clientHeight) {
           canvas.width = canvas.clientWidth;
@@ -1456,18 +2417,18 @@
 
           // Class-based color styling
           const cl = (det.classLabel || 'object').toLowerCase();
-          let color = '#00e676'; // vibrant neon green for standard objects
-          if (cl === 'person') color = '#00e5ff'; // tactical cyan
-          else if (['cell phone', 'laptop', 'tv', 'keyboard', 'mouse', 'remote'].includes(cl)) color = '#38bdf8'; // light blue
-          else if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(cl)) color = '#ffb300'; // amber
-          else if (['knife', 'scissors', 'weapon', 'gun'].includes(cl)) color = '#ff3d71'; // red threat
+          let color = '#00e676';
+          if (cl === 'person') color = '#00e5ff';
+          else if (['cell phone', 'laptop', 'tv', 'keyboard', 'mouse', 'remote'].includes(cl)) color = '#38bdf8';
+          else if (['car', 'truck', 'bus', 'motorcycle', 'bicycle'].includes(cl)) color = '#ffb300';
+          else if (['knife', 'scissors', 'weapon', 'gun'].includes(cl)) color = '#ff3d71';
 
           // 1. Tactical Bounding Frame
           ctx.strokeStyle = color;
           ctx.lineWidth = 1.5;
           ctx.strokeRect(bx, by, bw, bh);
 
-          // Corner Brackets (advanced-android-camera style)
+          // Corner Brackets
           const bLen = Math.min(14, bw * 0.25);
           ctx.lineWidth = 3;
           ctx.beginPath();
@@ -1480,14 +2441,33 @@
           // Label Banner Top
           const conf = Math.round(det.confidence * 100);
           const topLabel = `${det.classLabel.toUpperCase()} [${det.localId}] ${conf}%`;
-          ctx.font = 'bold 10px "JetBrains Mono", monospace';
+          ctx.font = 'bold 9px "JetBrains Mono", monospace';
           const tw = ctx.measureText(topLabel).width;
           ctx.fillStyle = color;
-          ctx.fillRect(bx, Math.max(0, by - 16), tw + 6, 16);
+          ctx.fillRect(bx, Math.max(0, by - 14), tw + 6, 14);
           ctx.fillStyle = '#000';
-          ctx.fillText(topLabel, bx + 3, Math.max(12, by - 4));
+          ctx.fillText(topLabel, bx + 3, Math.max(10, by - 3));
 
-          // 2. Centroid & Movement Direction Vector
+          // 2. Tactical Measurement Banner Bottom
+          const met = det.metrics || {};
+          let bottomTag;
+          if (met.isCalibrated && met.estimatedDistanceM !== null) {
+            bottomTag = `DIST: ${met.estimatedDistanceM}m | H: ${met.estimatedHeightM}m | ${met.horizontalAngleDeg >= 0 ? '+' : ''}${met.horizontalAngleDeg}°`;
+          } else {
+            bottomTag = `${met.pixelWidth}×${met.pixelHeight}px | ${met.horizontalAngleDeg >= 0 ? '+' : ''}${met.horizontalAngleDeg}° | REL`;
+          }
+
+          ctx.font = 'bold 8px "JetBrains Mono", monospace';
+          const btw = ctx.measureText(bottomTag).width;
+          ctx.fillStyle = 'rgba(10, 16, 26, 0.85)';
+          ctx.fillRect(bx, by + bh + 2, btw + 6, 13);
+          ctx.strokeStyle = met.isCalibrated ? 'rgba(0, 230, 118, 0.4)' : 'rgba(255, 170, 0, 0.4)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(bx, by + bh + 2, btw + 6, 13);
+          ctx.fillStyle = met.isCalibrated ? '#00e676' : '#ffb300';
+          ctx.fillText(bottomTag, bx + 3, by + bh + 12);
+
+          // 3. Centroid & Direction Vector
           const cx = bx + bw / 2;
           const cy = by + bh / 2;
           ctx.fillStyle = color;
@@ -1508,7 +2488,6 @@
             ctx.lineTo(tox, toy);
             ctx.stroke();
 
-            // Arrow head
             const headlen = 7;
             ctx.beginPath();
             ctx.moveTo(tox, toy);
@@ -1519,7 +2498,7 @@
             ctx.fill();
           }
 
-          // 3. MoveNet Skeleton Lines and Keypoints (for Person detections)
+          // 4. MoveNet Skeleton
           if (det.rawPoseKeypoints && det.rawPoseKeypoints.length > 0) {
             const kpMap = {};
             det.rawPoseKeypoints.forEach(k => {
@@ -1530,7 +2509,6 @@
               };
             });
 
-            // Draw Skeleton Bones
             ctx.strokeStyle = 'rgba(0, 230, 118, 0.75)';
             ctx.lineWidth = 2;
             SKELETON_PAIRS.forEach(([p1, p2]) => {
@@ -1544,7 +2522,6 @@
               }
             });
 
-            // Draw Keypoint Circles
             det.rawPoseKeypoints.forEach(k => {
               if (k.score >= 0.30) {
                 const kx = (k.x / actualW) * canvas.width;
@@ -1561,9 +2538,13 @@
         });
       }
 
-      // Bootstrap Page Sequence
-      console.log('[MOBILE-CAM] Page loaded');
-      console.log('[MOBILE-CAM] Secure context: ' + window.isSecureContext);
+      // ============================================================
+      // 10. SYSTEM BOOTSTRAP
+      // ============================================================
+      console.log('[MOBILE-CAM] Initializing mobile camera tactical node');
+      updateCalibrationUI();
+      initMotionSensors();
+
       if (targetPeerId) {
         connectPeerJs(targetPeerId);
       }
@@ -1572,7 +2553,6 @@
       loadCocoModel();
       loadPoseModel();
 
-      // Launch Adaptive Inference Loop
       setTimeout(detectionLoop, 350);
     })();
   </script>
