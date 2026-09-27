@@ -369,10 +369,11 @@
     .vf-br { bottom: 0; right: 0; border-width: 0 2.5px 2.5px 0; }
   </style>
 
-  <!-- Pinned versions of TensorFlow.js, COCO-SSD, and MoveNet Pose-Detection -->
+  <!-- Pinned versions of TensorFlow.js, COCO-SSD, MoveNet Pose-Detection, and PeerJS -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3"></script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -657,8 +658,9 @@
         setStatus(statCamFeed, 'warn', 'Starting...');
 
         if (!window.isSecureContext) {
-          const httpsHost = location.hostname || '10.159.203.55';
-          const err = `CAMERA ACCESS BLOCKED — this page is not a secure context. Open https://${httpsHost}:3443/mobile-cam instead of the http:// URL.`;
+          const isLocal = location.hostname === 'localhost' || /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname);
+          const portStr = isLocal ? ':3443' : (location.port && location.port !== '80' && location.port !== '443' ? `:${location.port}` : '');
+          const err = `CAMERA ACCESS BLOCKED — this page is not a secure context. Open https://${location.hostname}${portStr}/mobile-cam.html over HTTPS.`;
           setStatus(statCamFeed, 'error', 'Stopped');
           showError(err);
           console.error('[MOBILE-CAM] Insecure context:', err);
@@ -819,13 +821,11 @@
 
       // Sync To Dashboard Center Focal Viewport
       btnSyncCenter?.addEventListener('click', () => {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'MOBILE_REQUEST_FOCUS',
-            cameraId: 'CAM-MOBILE-01',
-            timestamp: Date.now()
-          }));
-        }
+        sendMobilePayload({
+          type: 'MOBILE_REQUEST_FOCUS',
+          cameraId: 'CAM-MOBILE-01',
+          timestamp: Date.now()
+        });
         btnSyncCenter.textContent = '✓ In Centre';
         btnSyncCenter.style.borderColor = 'var(--green)';
         setTimeout(() => {
@@ -837,22 +837,115 @@
       let heartbeatTimer = null;
 
       function sendHeartbeat() {
+        sendMobilePayload({
+          type: 'MOBILE_HEARTBEAT',
+          cameraId: 'CAM-MOBILE-01',
+          timestamp: Date.now()
+        });
+      }
+
+      // Dual-link Transport: WebSocket + WebRTC PeerJS + BroadcastChannel
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetPeerId = urlParams.get('peer');
+      const targetServer = urlParams.get('server');
+      const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('ibvap_mobile_cam') : null;
+      let peer = null;
+      let peerConn = null;
+
+      function sendMobilePayload(payload) {
+        let delivered = false;
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'MOBILE_HEARTBEAT',
-            cameraId: 'CAM-MOBILE-01',
-            timestamp: Date.now()
-          }));
+          ws.send(JSON.stringify(payload));
+          delivered = true;
+        }
+        if (peerConn && peerConn.open) {
+          try {
+            peerConn.send(payload);
+            delivered = true;
+          } catch (e) {
+            console.warn('[PEER] send error:', e);
+          }
+        }
+        if (bc) {
+          try {
+            bc.postMessage(payload);
+            delivered = true;
+          } catch (e) {}
+        }
+        return delivered;
+      }
+
+      // 2a. WebRTC PeerJS Uplink (For Cloud Deployments like Vercel)
+      function connectPeerJs(targetId) {
+        if (!targetId || typeof Peer === 'undefined') return;
+        try {
+          console.log('[MOBILE-CAM] Initializing WebRTC PeerJS uplink to C2:', targetId);
+          peer = new Peer();
+          peer.on('open', (myId) => {
+            console.log('[MOBILE-CAM] WebRTC Local Peer ID:', myId);
+            const conn = peer.connect(targetId, { reliable: true });
+            conn.on('open', () => {
+              console.log('[MOBILE-CAM] WebRTC Connected to C2 console peer:', targetId);
+              peerConn = conn;
+              setStatus(statServer, 'ok', 'Connected (Cloud Peer)');
+              debugWsUrl.textContent = `webrtc://${targetId.substring(0, 10)}...`;
+
+              const handshake = {
+                type: 'MOBILE_CAMERA_CONNECT',
+                cameraId: 'CAM-MOBILE-01',
+                device: 'mobile'
+              };
+              sendMobilePayload(handshake);
+
+              if (heartbeatTimer) clearInterval(heartbeatTimer);
+              heartbeatTimer = setInterval(sendHeartbeat, 2500);
+            });
+            conn.on('close', () => {
+              console.warn('[MOBILE-CAM] WebRTC Peer connection closed');
+              peerConn = null;
+              if (!ws || ws.readyState !== WebSocket.OPEN) {
+                setStatus(statServer, 'error', 'Disconnected');
+              }
+            });
+            conn.on('error', (err) => {
+              console.warn('[MOBILE-CAM] WebRTC Peer connection error:', err);
+            });
+          });
+          peer.on('error', (err) => {
+            console.warn('[MOBILE-CAM] PeerJS broker error:', err.type || err);
+          });
+        } catch (e) {
+          console.warn('[MOBILE-CAM] PeerJS init exception:', e);
         }
       }
 
-      // 2. WebSocket Connection (Derived from location origin)
+      // 2b. WebSocket Connection (Derived from location or targetServer parameter)
       function connectWebSocket() {
         if (reconnectTimer) clearTimeout(reconnectTimer);
-        const protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${location.host}`;
+        
+        let wsUrl;
+        if (targetServer) {
+          const wsProtocol = targetServer.startsWith('https') ? 'wss:' : (targetServer.includes(':3443') ? 'wss:' : 'ws:');
+          const cleanHost = targetServer.replace(/^https?:\/\//, '');
+          wsUrl = `${wsProtocol}//${cleanHost}`;
+        } else {
+          // If running on a cloud deployment like Vercel and no local server param provided,
+          // don't attempt WebSocket since serverless hosting doesn't support persistent WS
+          if (location.hostname.endsWith('vercel.app')) {
+            console.log('[MOBILE-CAM] Running on Vercel cloud; using WebRTC PeerJS uplink');
+            if (targetPeerId) {
+              connectPeerJs(targetPeerId);
+            } else {
+              setStatus(statServer, 'warn', 'Cloud Standby');
+              debugWsUrl.textContent = 'cloud://webrtc-standby';
+            }
+            return;
+          }
+          const protocol = (location.protocol === 'https:') ? 'wss:' : 'ws:';
+          wsUrl = `${protocol}//${location.host}`;
+        }
+        
         debugWsUrl.textContent = wsUrl;
-
         console.log('[MOBILE-CAM] Connecting WebSocket to ' + wsUrl);
         setStatus(statServer, 'warn', 'Connecting...');
 
@@ -864,23 +957,23 @@
             setStatus(statServer, 'ok', 'Connected');
             reconnectDelay = 2000;
 
-            // Phase 1.1: Identify mobile camera on WebSocket open
             const handshake = {
               type: 'MOBILE_CAMERA_CONNECT',
               cameraId: 'CAM-MOBILE-01',
               device: 'mobile'
             };
-            ws.send(JSON.stringify(handshake));
+            sendMobilePayload(handshake);
             console.log('[MOBILE-CAM] Sent MOBILE_CAMERA_CONNECT handshake');
 
-            // Phase 1.3: Start periodic heartbeat keepalive (every 2.5s)
             if (heartbeatTimer) clearInterval(heartbeatTimer);
             heartbeatTimer = setInterval(sendHeartbeat, 2500);
           };
 
           ws.onclose = () => {
             console.warn(`[MOBILE-CAM] WebSocket closed, retrying in ${reconnectDelay}ms...`);
-            setStatus(statServer, 'error', 'Disconnected');
+            if (!peerConn || !peerConn.open) {
+              setStatus(statServer, 'error', 'Disconnected');
+            }
             if (heartbeatTimer) {
               clearInterval(heartbeatTimer);
               heartbeatTimer = null;
@@ -1224,25 +1317,23 @@
               frameImage = previewCanvas.toDataURL('image/jpeg', 0.50);
             }
 
-            // Transmit Structured Multi-Object Payload via WebSocket (Metadata + Frame)
-            if (ws && ws.readyState === WebSocket.OPEN) {
-              const payload = {
-                type: 'MOBILE_DETECTION',
-                cameraId: 'CAM-MOBILE-01',
-                timestamp: now,
-                frameImage: frameImage,
-                frameWidth: actualW,
-                frameHeight: actualH,
-                detections: currentDetections.map(d => ({
-                  classLabel: d.classLabel,
-                  confidence: d.confidence,
-                  bbox: d.bbox
-                }))
-              };
-              ws.send(JSON.stringify(payload));
-              if (currentDetections.length > 0) {
-                console.log(`[MOBILE-CAM] Detections sent: ${currentDetections.length} objects (${currentDetections.map(d => d.classLabel).join(', ')})`);
-              }
+            // Transmit Structured Multi-Object Payload (Metadata + Frame)
+            const payload = {
+              type: 'MOBILE_DETECTION',
+              cameraId: 'CAM-MOBILE-01',
+              timestamp: now,
+              frameImage: frameImage,
+              frameWidth: actualW,
+              frameHeight: actualH,
+              detections: currentDetections.map(d => ({
+                classLabel: d.classLabel,
+                confidence: d.confidence,
+                bbox: d.bbox
+              }))
+            };
+            const sent = sendMobilePayload(payload);
+            if (sent && currentDetections.length > 0) {
+              console.log(`[MOBILE-CAM] Detections sent: ${currentDetections.length} objects (${currentDetections.map(d => d.classLabel).join(', ')})`);
             }
 
             // Update Phone Status HUD & Live Telemetry Tray
@@ -1473,6 +1564,9 @@
       // Bootstrap Page Sequence
       console.log('[MOBILE-CAM] Page loaded');
       console.log('[MOBILE-CAM] Secure context: ' + window.isSecureContext);
+      if (targetPeerId) {
+        connectPeerJs(targetPeerId);
+      }
       connectWebSocket();
       startCamera(currentFacing);
       loadCocoModel();

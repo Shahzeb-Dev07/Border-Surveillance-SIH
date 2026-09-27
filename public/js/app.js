@@ -1,7 +1,76 @@
 // IBVAP C2 Command Center Main Application
 document.addEventListener('DOMContentLoaded', () => {
   // State
-  let cameras = [];
+  const DEFAULT_CAMERAS = [
+    {
+      id: 'CAM-01',
+      name: 'Perimeter Watchtower Alpha',
+      bop: 'BOP 14 - Kakrahwa Sector',
+      location: 'Border Pillar 552/3 - Main Perimeter Fence',
+      resolution: '1920x1080 @ 15fps',
+      mode: 'DAYLIGHT_RGB',
+      fovType: 'WIDE_PERIMETER',
+      capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: false, faceRecognition: false, nightIr: false },
+      fps: 15.0,
+      latencyMs: 18.2,
+      status: 'ONLINE'
+    },
+    {
+      id: 'CAM-02',
+      name: 'Checkpost Barrier Choke Point',
+      bop: 'BOP 14 - Kakrahwa Sector',
+      location: 'Inbound Vehicle Inspection Lane',
+      resolution: '1920x1080 @ 20fps',
+      mode: 'DAYLIGHT_RGB',
+      fovType: 'CHOKE_POINT_INSPECTION',
+      capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: true, faceRecognition: true, nightIr: false },
+      fps: 20.0,
+      latencyMs: 22.4,
+      status: 'ONLINE'
+    },
+    {
+      id: 'CAM-03',
+      name: 'Sector 4 Ridge Zero-Line (Night IR)',
+      bop: 'BOP 18 - Mahadeva Ridge',
+      location: 'Zero-Line Restricted Wire Sector 4',
+      resolution: '1280x720 @ 12fps',
+      mode: 'NIGHT_IR_ILLUMINATED',
+      fovType: 'PERIMETER_IR_ZONE',
+      capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: false, faceRecognition: false, nightIr: true },
+      fps: 12.0,
+      latencyMs: 31.0,
+      status: 'ONLINE'
+    },
+    {
+      id: 'CAM-04',
+      name: 'High Altitude Patrol Road',
+      bop: 'BOP 22 - Sonauli Sector',
+      location: 'Border Patrol Access Road KM 12',
+      resolution: '1920x1080 @ 15fps',
+      mode: 'DAYLIGHT_RGB',
+      fovType: 'HIGHWAY_TRANSIT',
+      capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: false, faceRecognition: false, nightIr: false },
+      fps: 15.0,
+      latencyMs: 19.5,
+      status: 'ONLINE'
+    },
+    {
+      id: 'CAM-MOBILE-01',
+      name: 'Mobile Recon Patrol (Smartphone Ad-Hoc Feed)',
+      bop: 'Mobile QRT Recon Unit',
+      location: 'Tactical Recon Point // Dynamic Smartphone Feed',
+      resolution: 'Mobile 720p @ 8fps',
+      mode: 'DAYLIGHT_RGB',
+      fovType: 'MOBILE_ADHOC',
+      capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: false, faceRecognition: false, nightIr: false },
+      fps: 8.0,
+      latencyMs: 14.5,
+      status: 'WAITING',
+      isMobile: true
+    }
+  ];
+
+  let cameras = JSON.parse(JSON.stringify(DEFAULT_CAMERAS));
   let activeCameraId = 'CAM-01';
   let zonesMap = {}; // cameraId -> zones array
   let events = [];
@@ -818,6 +887,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const mobileCamDialog = document.getElementById('mobileCamDialog');
   const modalLanIp = document.getElementById('modalLanIp');
   const modalMobileUrl = document.getElementById('modalMobileUrl');
+  const modalModeBadge = document.getElementById('modalModeBadge');
+  const inputCustomServerIp = document.getElementById('inputCustomServerIp');
+  const btnApplyCustomIp = document.getElementById('btnApplyCustomIp');
   const mobileCamHttpsWarning = document.getElementById('mobileCamHttpsWarning');
   const mobileCamConnectFlow = document.getElementById('mobileCamConnectFlow');
   const mobileCamQrCode = document.getElementById('mobileCamQrCode');
@@ -825,8 +897,167 @@ document.addEventListener('DOMContentLoaded', () => {
   const copyUrlFeedback = document.getElementById('copyUrlFeedback');
   const btnOpenMobilePreview = document.getElementById('btnOpenMobilePreview');
 
+  // PeerJS WebRTC & BroadcastChannel Uplink for Mobile Camera
+  let peer = null;
+  let peerId = 'ibvap-' + Math.random().toString(36).substring(2, 8);
+  const mobileCamBc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('ibvap_mobile_cam') : null;
+
+  if (mobileCamBc) {
+    mobileCamBc.onmessage = (evt) => {
+      handleMobileCamTelemetry(evt.data);
+    };
+  }
+
+  function initPeer() {
+    if (typeof Peer === 'undefined') return;
+    try {
+      peer = new Peer(peerId);
+      peer.on('open', (id) => {
+        console.log('[PEER] C2 Console PeerJS initialized with ID:', id);
+        peerId = id;
+      });
+      peer.on('connection', (conn) => {
+        console.log('[PEER] Mobile phone camera connected via WebRTC PeerJS!');
+        conn.on('data', (data) => {
+          handleMobileCamTelemetry(data);
+        });
+        conn.on('close', () => {
+          console.log('[PEER] Mobile camera peer connection closed');
+          const mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+          if (mobileCam && mobileCam.status === 'ONLINE') {
+            mobileCam.status = 'WAITING';
+            renderCameraList();
+            updateActiveCamera();
+            updateMobileCamModalStatus();
+          }
+        });
+      });
+      peer.on('error', (err) => {
+        console.warn('[PEER] Peer error:', err.type || err);
+      });
+    } catch (e) {
+      console.warn('[PEER] Peer initialization skipped:', e);
+    }
+  }
+
+  function handleMobileCamTelemetry(data) {
+    if (!data || !data.type) return;
+    let mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+    if (!mobileCam) {
+      mobileCam = {
+        id: 'CAM-MOBILE-01',
+        name: 'Mobile Recon Patrol (Smartphone Ad-Hoc Feed)',
+        bop: 'Mobile QRT Recon Unit',
+        location: 'Tactical Recon Point // Dynamic Smartphone Feed',
+        resolution: 'Mobile 720p',
+        status: 'ONLINE',
+        isMobile: true,
+        activeDetections: [],
+        meta: {}
+      };
+      cameras.push(mobileCam);
+    }
+
+    if (data.type === 'MOBILE_CAMERA_CONNECT') {
+      mobileCam.status = 'ONLINE';
+      mobileCam.lastSeen = Date.now();
+      window.tacticalAudio?.playAlertPing('INFO');
+      renderCameraList();
+      updateActiveCamera();
+      updateMobileCamModalStatus();
+    } else if (data.type === 'MOBILE_HEARTBEAT') {
+      mobileCam.status = 'ONLINE';
+      mobileCam.lastSeen = Date.now();
+      updateMobileCamModalStatus();
+    } else if (data.type === 'MOBILE_DETECTION') {
+      mobileCam.status = 'ONLINE';
+      mobileCam.lastSeen = Date.now();
+      mobileCam.activeDetections = data.detections || [];
+      if (data.frameImage) {
+        mobileCam.frameImage = data.frameImage;
+      }
+      const detections = data.detections || [];
+      const persons = detections.filter(d => d.classLabel === 'person').length;
+      const highestConf = detections.reduce((max, d) => Math.max(max, d.confidence || 0), 0);
+      mobileCam.meta = {
+        detectedPersons: persons,
+        totalObjects: detections.length,
+        confidencePct: Math.round(highestConf * 100),
+        lastReceivedAt: Date.now()
+      };
+
+      updateActiveCamera();
+      renderCameraList();
+      updateMobileCamModalStatus();
+    } else if (data.type === 'MOBILE_REQUEST_FOCUS') {
+      switchCamera('CAM-MOBILE-01');
+    }
+  }
+
+  function computeMobileCamUrl(customHost) {
+    const isPublicCloud = window.location.protocol === 'https:' &&
+      !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
+
+    if (customHost && customHost.trim()) {
+      const trimmed = customHost.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      const port = trimmed.includes(':') ? '' : ':3443';
+      const peerQuery = peerId ? `?peer=${peerId}` : '';
+      return `https://${trimmed}${port}/mobile-cam.html${peerQuery}`;
+    }
+
+    if (isPublicCloud) {
+      const peerQuery = peerId ? `?peer=${peerId}` : '';
+      return `${window.location.origin}/mobile-cam.html${peerQuery}`;
+    }
+
+    const host = window.location.hostname || 'localhost';
+    const peerQuery = peerId ? `?peer=${peerId}` : '';
+    return `https://${host}:3443/mobile-cam.html${peerQuery}`;
+  }
+
+  function renderMobileCamQr(url) {
+    currentMobileUrl = url;
+    if (modalMobileUrl) modalMobileUrl.textContent = url;
+    if (mobileCamQrCode && typeof QRCode !== 'undefined') {
+      mobileCamQrCode.innerHTML = '';
+      new QRCode(mobileCamQrCode, {
+        text: url,
+        width: 140,
+        height: 140,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    }
+  }
+
+  btnApplyCustomIp?.addEventListener('click', () => {
+    const custom = inputCustomServerIp ? inputCustomServerIp.value : '';
+    const url = computeMobileCamUrl(custom);
+    renderMobileCamQr(url);
+  });
+
   // Open modal in-place without navigating away from the dashboard tab
   btnOpenMobileCamModal?.addEventListener('click', async () => {
+    const isPublicCloud = window.location.protocol === 'https:' &&
+      !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
+
+    if (modalModeBadge) {
+      modalModeBadge.textContent = isPublicCloud ? 'CLOUD WEBRTC' : 'LOCAL WI-FI';
+      modalModeBadge.style.color = isPublicCloud ? 'var(--accent-cyan)' : 'var(--accent-green)';
+    }
+
+    if (isPublicCloud) {
+      if (modalLanIp) modalLanIp.textContent = window.location.hostname;
+      const url = computeMobileCamUrl(inputCustomServerIp?.value);
+      renderMobileCamQr(url);
+      if (mobileCamHttpsWarning) mobileCamHttpsWarning.style.display = 'none';
+      if (mobileCamConnectFlow) mobileCamConnectFlow.style.display = 'block';
+      updateMobileCamModalStatus();
+      mobileCamDialog?.showModal();
+      return;
+    }
+
     try {
       if (modalLanIp) modalLanIp.textContent = 'Detecting LAN IP...';
       if (modalMobileUrl) modalMobileUrl.textContent = 'Loading endpoint...';
@@ -834,54 +1065,28 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/mobile-cam-info');
       const info = await res.json();
 
-      currentMobileUrl = info.mobileUrl || '';
-      if (modalLanIp) modalLanIp.textContent = info.lanIp || window.location.hostname;
-      if (modalMobileUrl) modalMobileUrl.textContent = currentMobileUrl;
+      const host = info.lanIp || window.location.hostname;
+      if (modalLanIp) modalLanIp.textContent = host;
+
+      const url = info.mobileUrl ? `${info.mobileUrl}.html?peer=${peerId}` : computeMobileCamUrl(inputCustomServerIp?.value);
+      renderMobileCamQr(url);
 
       if (info.httpsAvailable) {
         if (mobileCamHttpsWarning) mobileCamHttpsWarning.style.display = 'none';
         if (mobileCamConnectFlow) mobileCamConnectFlow.style.display = 'block';
-
-        if (mobileCamQrCode) {
-          mobileCamQrCode.innerHTML = '';
-          if (typeof QRCode !== 'undefined') {
-            new QRCode(mobileCamQrCode, {
-              text: currentMobileUrl,
-              width: 140,
-              height: 140,
-              colorDark: '#000000',
-              colorLight: '#ffffff',
-              correctLevel: QRCode.CorrectLevel.M
-            });
-          }
-        }
       } else {
         if (mobileCamConnectFlow) mobileCamConnectFlow.style.display = 'none';
         if (mobileCamHttpsWarning) mobileCamHttpsWarning.style.display = 'block';
       }
-
       updateMobileCamModalStatus();
       mobileCamDialog?.showModal();
     } catch (err) {
-      console.error('[MOBILE-CAM] Failed to fetch endpoint info:', err);
-      const fallbackHost = window.location.hostname || '10.159.203.55';
-      const fallbackUrl = `https://${fallbackHost}:3443/mobile-cam`;
-      currentMobileUrl = fallbackUrl;
-      if (modalLanIp) modalLanIp.textContent = fallbackHost;
-      if (modalMobileUrl) modalMobileUrl.textContent = fallbackUrl;
+      console.warn('[MOBILE-CAM] Could not fetch local endpoint info, using fallback:', err.message);
+      if (modalLanIp) modalLanIp.textContent = window.location.hostname;
+      const url = computeMobileCamUrl(inputCustomServerIp?.value);
+      renderMobileCamQr(url);
       if (mobileCamHttpsWarning) mobileCamHttpsWarning.style.display = 'none';
       if (mobileCamConnectFlow) mobileCamConnectFlow.style.display = 'block';
-      if (mobileCamQrCode && typeof QRCode !== 'undefined') {
-        mobileCamQrCode.innerHTML = '';
-        new QRCode(mobileCamQrCode, {
-          text: fallbackUrl,
-          width: 140,
-          height: 140,
-          colorDark: '#000000',
-          colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M
-        });
-      }
       updateMobileCamModalStatus();
       mobileCamDialog?.showModal();
     }
@@ -1068,6 +1273,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
   }
+
+  // Initial UI Render & Peer Initialization
+  renderCameraList();
+  updateActiveCamera();
+  initPeer();
 
   // Connect WebSocket
   connectWs();

@@ -614,13 +614,21 @@
 
       <!-- Network Endpoint Details -->
       <div style="background:rgba(255,255,255,0.03);border:1px solid var(--border-subtle);border-radius:6px;padding:12px;margin-bottom:14px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="color:var(--text-muted);font-family:var(--font-mono)">Laptop LAN IP:</span>
-          <strong id="modalLanIp" style="color:var(--accent-cyan);font-family:var(--font-mono)">Loading...</strong>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="color:var(--text-muted);font-family:var(--font-mono)">Console Host:</span>
+          <span style="display:flex;align-items:center;gap:6px">
+            <span id="modalModeBadge" class="header-tag" style="font-size:10px;padding:1px 6px">CLOUD WEBRTC</span>
+            <strong id="modalLanIp" style="color:var(--accent-cyan);font-family:var(--font-mono)">Loading...</strong>
+          </span>
         </div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
           <span style="color:var(--text-muted);font-family:var(--font-mono)">Secure Mobile URL:</span>
           <span id="modalMobileUrl" style="color:var(--accent-green);font-family:var(--font-mono);font-size:11px;word-break:break-all">Loading...</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px">
+          <span style="color:var(--text-dim);font-family:var(--font-mono)">Target Server IP (Optional):</span>
+          <input type="text" id="inputCustomServerIp" placeholder="e.g. 192.168.100.34:3443" style="flex:1;background:rgba(0,0,0,0.4);border:1px solid var(--border-subtle);color:var(--text-main);padding:3px 8px;border-radius:4px;font-family:var(--font-mono);font-size:11px">
+          <button id="btnApplyCustomIp" class="btn-tactical" style="padding:3px 8px;font-size:10px">Apply</button>
         </div>
       </div>
 
@@ -636,11 +644,10 @@
           <div style="flex:1">
             <h3 style="font-size:12px;color:var(--accent-cyan);margin-bottom:6px;font-family:var(--font-mono)">CONNECT YOUR PHONE CAMERA:</h3>
             <ol style="margin-left:16px;font-size:11px;color:var(--text-main);line-height:1.6">
-              <li>Connect phone to the <strong>same Wi-Fi or mobile hotspot</strong> as this laptop.</li>
-              <li>Scan the QR code or open the <strong>Secure Mobile URL</strong> in your phone browser.</li>
-              <li>Accept certificate warning if prompted (tap <em>Advanced &gt; Proceed</em>).</li>
+              <li>Scan the QR code with your phone camera or open the <strong>Secure Mobile URL</strong> in your mobile browser.</li>
               <li>Tap <strong>Allow</strong> when camera permission is requested.</li>
-              <li>Keep the phone page open — detection telemetry flows automatically to this C2 console.</li>
+              <li>Keep the phone browser open — real-time AI object detections stream directly to this C2 console.</li>
+              <li>(For local edge servers on LAN: ensure phone and laptop share the same Wi-Fi).</li>
             </ol>
           </div>
         </div>
@@ -725,6 +732,7 @@
   </dialog>
 
   <!-- Scripts -->
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script src="/js/qrcode.min.js"></script>
   <script src="/js/audioAlert.js"></script>
   <script src="/js/gisMap.js"></script>
