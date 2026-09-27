@@ -14,6 +14,13 @@ class AlertEngine {
     const cooldownPeriodMs = (config.cooldownSeconds || 20) * 1000;
     const generatedOrUpdatedEvents = [];
 
+    // Prune expired cooldowns to prevent memory accumulation over long uptimes
+    if (this.cooldowns.size > 200) {
+      for (const [k, exp] of this.cooldowns.entries()) {
+        if (now > exp) this.cooldowns.delete(k);
+      }
+    }
+
     // 1. Process incoming triggers
     for (const trig of triggers) {
       const eventKey = `${camera.id}_${trig.ruleId}_${trig.trackId}`;
