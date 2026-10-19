@@ -13,7 +13,27 @@ document.addEventListener('DOMContentLoaded', () => {
       capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: false, faceRecognition: false, nightIr: false },
       fps: 15.0,
       latencyMs: 18.2,
-      status: 'ONLINE'
+      status: 'ONLINE',
+      activeDetections: [
+        {
+          trackId: 'TRK-100',
+          classLabel: 'patrol_soldier',
+          displayName: 'Patrol soldier',
+          confidence: 0.94,
+          speed: 1.2,
+          bbox: { x: 0.55, y: 0.50, w: 0.045, h: 0.12 },
+          status: 'NORMAL'
+        },
+        {
+          trackId: 'TRK-101',
+          classLabel: 'person',
+          displayName: 'Person - Alert',
+          confidence: 0.91,
+          speed: 0.8,
+          bbox: { x: 0.50, y: 0.18, w: 0.048, h: 0.125 },
+          status: 'ALERT'
+        }
+      ]
     },
     {
       id: 'CAM-02',
@@ -26,7 +46,19 @@ document.addEventListener('DOMContentLoaded', () => {
       capabilities: { humanDetection: true, humanTracking: true, virtualFence: true, anpr: true, faceRecognition: true, nightIr: false },
       fps: 20.0,
       latencyMs: 22.4,
-      status: 'ONLINE'
+      status: 'ONLINE',
+      activeDetections: [
+        {
+          trackId: 'TRK-103',
+          classLabel: 'civilian_vehicle',
+          displayName: 'Vehicle (UP-55-AF-1084)',
+          confidence: 0.96,
+          speed: 0.2,
+          bbox: { x: 0.39, y: 0.53, w: 0.15, h: 0.14 },
+          status: 'ALERT',
+          anpr: { plateNumber: 'UP-55-AF-1084', confidence: 0.88 }
+        }
+      ]
     },
     {
       id: 'CAM-03',
@@ -70,10 +102,168 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   ];
 
+  const DEFAULT_ZONES = {
+    'CAM-01': [
+      {
+        id: 'ZONE-CAM01-01',
+        name: 'Perimeter Exclusion Wire',
+        type: 'polygon',
+        rule: 'VIRTUAL_FENCE',
+        severity: 'CRITICAL',
+        color: '#ff3d71',
+        points: [
+          { x: 0.15, y: 0.75 },
+          { x: 0.35, y: 0.52 },
+          { x: 0.78, y: 0.28 },
+          { x: 0.88, y: 0.38 },
+          { x: 0.42, y: 0.72 },
+          { x: 0.18, y: 0.88 }
+        ],
+        enabled: true
+      }
+    ],
+    'CAM-02': [
+      {
+        id: 'ZONE-CAM02-01',
+        name: 'Boom Barrier Choke Point',
+        type: 'polygon',
+        rule: 'STATIONARY_VEHICLE',
+        dwellThresholdSec: 5,
+        severity: 'HIGH',
+        color: '#00e5ff',
+        points: [
+          { x: 0.36, y: 0.5 },
+          { x: 0.58, y: 0.5 },
+          { x: 0.64, y: 0.7 },
+          { x: 0.32, y: 0.7 }
+        ],
+        enabled: true
+      },
+      {
+        id: 'ZONE-CAM02-TRIPWIRE',
+        name: 'Checkpost Entry Tripwire',
+        type: 'tripwire',
+        rule: 'DIRECTIONAL_CROSSING',
+        direction: 'INBOUND',
+        severity: 'MEDIUM',
+        color: '#00e676',
+        points: [
+          { x: 0.25, y: 0.62 },
+          { x: 0.68, y: 0.62 }
+        ],
+        enabled: true
+      }
+    ],
+    'CAM-03': [
+      {
+        id: 'ZONE-CAM03-01',
+        name: 'Night Zero-Line Sector 4',
+        type: 'polygon',
+        rule: 'VIRTUAL_FENCE',
+        severity: 'CRITICAL',
+        color: '#ff3d71',
+        points: [
+          { x: 0.08, y: 0.85 },
+          { x: 0.45, y: 0.48 },
+          { x: 0.82, y: 0.25 },
+          { x: 0.92, y: 0.35 },
+          { x: 0.52, y: 0.68 },
+          { x: 0.12, y: 0.95 }
+        ],
+        enabled: true
+      }
+    ],
+    'CAM-04': [
+      {
+        id: 'ZONE-CAM04-01',
+        name: 'Road Transit Corridor',
+        type: 'polygon',
+        rule: 'DIRECTIONAL_CROSSING',
+        severity: 'MEDIUM',
+        color: '#00e5ff',
+        points: [
+          { x: 0.2, y: 0.8 },
+          { x: 0.4, y: 0.4 },
+          { x: 0.6, y: 0.4 },
+          { x: 0.5, y: 0.8 }
+        ],
+        enabled: true
+      }
+    ]
+  };
+
+  const DEFAULT_EVENTS = [
+    {
+      event_id: 'EVT-INIT-001',
+      camera_id: 'CAM-01',
+      camera_name: 'Perimeter Watchtower Alpha',
+      location: 'Border Pillar 552/3 - Main Perimeter Fence',
+      timestamp: new Date(Date.now() - 15000).toISOString(),
+      started_at: new Date(Date.now() - 15000).toISOString(),
+      duration_sec: 15,
+      event_type: 'VIRTUAL_FENCE_BREACH',
+      rule_name: 'Perimeter Exclusion Wire Breach: Sector Alpha',
+      object_type: 'person',
+      track_id: 'TRK-101',
+      confidence: 0.94,
+      severity: 'CRITICAL',
+      details: 'Person detected near exclusion wire boundary [Verified by Multi-frame Consensus]',
+      zone_id: 'ZONE-CAM01-01',
+      zone_name: 'Perimeter Exclusion Wire',
+      snapshot_uri: '/assets/cam_bop_01_perimeter.jpg',
+      operator_status: 'UNACKNOWLEDGED',
+      system_status: 'ACTIVE'
+    },
+    {
+      event_id: 'EVT-INIT-002',
+      camera_id: 'CAM-02',
+      camera_name: 'Checkpost Barrier Choke Point',
+      location: 'Inbound Vehicle Inspection Lane',
+      timestamp: new Date(Date.now() - 45000).toISOString(),
+      started_at: new Date(Date.now() - 45000).toISOString(),
+      duration_sec: 6,
+      event_type: 'STATIONARY_VEHICLE',
+      rule_name: 'Stationary Vehicle Alert: Boom Barrier Choke Point',
+      object_type: 'civilian_vehicle',
+      track_id: 'TRK-103',
+      confidence: 0.96,
+      severity: 'HIGH',
+      details: 'Vehicle stopped inside inspection corridor for >5s.',
+      zone_id: 'ZONE-CAM02-01',
+      zone_name: 'Boom Barrier Choke Point',
+      snapshot_uri: '/assets/cam_bop_01_chokepoint.jpg',
+      plate_text: 'UP-55-AF-1084',
+      plate_confidence: 0.88,
+      operator_status: 'UNACKNOWLEDGED',
+      system_status: 'ACTIVE'
+    },
+    {
+      event_id: 'EVT-INIT-003',
+      camera_id: 'CAM-02',
+      camera_name: 'Checkpost Barrier Choke Point',
+      location: 'Inbound Vehicle Inspection Lane',
+      timestamp: new Date(Date.now() - 120000).toISOString(),
+      started_at: new Date(Date.now() - 120000).toISOString(),
+      duration_sec: 2,
+      event_type: 'TRIPWIRE_BREACH',
+      rule_name: 'Directional Tripwire Breach: Checkpost Entry Tripwire',
+      object_type: 'civilian_vehicle',
+      track_id: 'TRK-102',
+      confidence: 0.96,
+      severity: 'MEDIUM',
+      details: 'Object TRK-102 breached directional tripwire Checkpost Entry Tripwire. [RESOLVED]',
+      zone_id: 'ZONE-CAM02-TRIPWIRE',
+      zone_name: 'Checkpost Entry Tripwire',
+      snapshot_uri: '/assets/cam_bop_01_chokepoint.jpg',
+      operator_status: 'ACKNOWLEDGED',
+      system_status: 'RESOLVED'
+    }
+  ];
+
   let cameras = JSON.parse(JSON.stringify(DEFAULT_CAMERAS));
   let activeCameraId = 'CAM-01';
-  let zonesMap = {}; // cameraId -> zones array
-  let events = [];
+  let zonesMap = JSON.parse(JSON.stringify(DEFAULT_ZONES));
+  let events = JSON.parse(JSON.stringify(DEFAULT_EVENTS));
   let rulesConfig = {};
   let wanConnected = true;
   let activeFilter = 'ALL';
@@ -156,36 +346,119 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateClock, 1000);
   updateClock();
 
+  // Edge Server URL Routing & Cloud Standby Fallback
+  const urlParams = new URLSearchParams(window.location.search);
+  const targetServer = urlParams.get('server');
+  const isPublicCloudHost = window.location.protocol === 'https:' &&
+    !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
+  const isVercelHost = window.location.hostname.endsWith('vercel.app') || window.location.hostname.includes('vercel.app');
+
+  let cloudSimulationTimer = null;
+  let cloudSimStep = 0;
+
+  function startCloudDemoSimulation() {
+    if (cloudSimulationTimer) return;
+    updateWanUI(true, 0, 'CLOUD DEMO (EDGE STANDBY)');
+    if (valLatency && (!valLatency.textContent || valLatency.textContent === '--')) valLatency.textContent = '19.4ms';
+    if (valCpu && (!valCpu.textContent || valCpu.textContent === '--')) valCpu.textContent = '14.2%';
+    if (valGpu && (!valGpu.textContent || valGpu.textContent === '--')) valGpu.textContent = '22.8%';
+    if (valBuffer) valBuffer.textContent = '0 EVTS';
+
+    cloudSimulationTimer = setInterval(() => {
+      cloudSimStep += 1;
+      const cam1 = cameras.find(c => c.id === 'CAM-01');
+      if (cam1 && cam1.activeDetections && cam1.activeDetections.length >= 2) {
+        const soldier = cam1.activeDetections[0];
+        const civilian = cam1.activeDetections[1];
+        if (soldier && soldier.bbox) {
+          const sy = 0.50 + 0.12 * Math.sin(cloudSimStep * 0.08);
+          soldier.bbox.y = sy;
+          soldier.bbox.x = 0.55 + (sy - 0.50) * 0.4;
+        }
+        if (civilian && civilian.bbox) {
+          civilian.bbox.x = 0.50 + 0.05 * Math.sin(cloudSimStep * 0.05);
+          civilian.bbox.y = 0.18 + 0.02 * Math.cos(cloudSimStep * 0.05);
+        }
+      }
+      if (activeCameraId === 'CAM-01') {
+        const zones = zonesMap[activeCameraId] || [];
+        canvasRenderer.updateFeed(cam1, zones, cam1?.activeDetections, cam1?.meta);
+      }
+    }, 1000);
+  }
+
+  function stopCloudDemoSimulation() {
+    if (cloudSimulationTimer) {
+      clearInterval(cloudSimulationTimer);
+      cloudSimulationTimer = null;
+    }
+  }
+
   // WebSocket Setup
   let ws = null;
   function connectWs() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${window.location.host}`);
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
 
-    ws.onopen = () => {
-      console.log('[WS] Connected to IBVAP C2 backend');
-    };
+    let wsUrl;
+    if (targetServer) {
+      const wsProtocol = targetServer.startsWith('https') ? 'wss:' : (targetServer.includes(':3443') ? 'wss:' : 'ws:');
+      const cleanHost = targetServer.replace(/^https?:\/\//, '');
+      wsUrl = `${wsProtocol}//${cleanHost}`;
+    } else if (isVercelHost || (isPublicCloudHost && !window.location.port)) {
+      // Cloud frontends (Vercel) without custom backend server specified
+      console.log('[WS] Running on Cloud CDN standby mode. Autonomous simulation active.');
+      updateWanUI(true, 0, 'CLOUD DEMO (EDGE STANDBY)');
+      startCloudDemoSimulation();
+      return;
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${protocol}//${window.location.host}`;
+    }
 
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        handleServerMessage(msg);
-      } catch (err) {
-        console.error('[WS] Parse error:', err);
+    try {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        console.log('[WS] Connected to IBVAP C2 backend at', wsUrl);
+        stopCloudDemoSimulation();
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleServerMessage(msg);
+        } catch (err) {
+          console.error('[WS] Parse error:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        console.warn('[WS] Connection closed, retrying in 2.5s...');
+        if (isVercelHost || isPublicCloudHost) {
+          startCloudDemoSimulation();
+        }
+        setTimeout(connectWs, 2500);
+      };
+
+      ws.onerror = (err) => {
+        console.warn('[WS] WebSocket connection notice:', err);
+      };
+    } catch (err) {
+      console.warn('[WS] WebSocket initialization failed:', err.message);
+      if (isVercelHost || isPublicCloudHost) {
+        startCloudDemoSimulation();
       }
-    };
-
-    ws.onclose = () => {
-      console.warn('[WS] Connection closed, retrying in 2s...');
-      setTimeout(connectWs, 2000);
-    };
+    }
   }
 
   function handleServerMessage(msg) {
     if (msg.type === 'INIT') {
+      stopCloudDemoSimulation();
       pageLoadTimestamp = Date.now();
       cameras = msg.data.cameras || [];
-      zonesMap = msg.data.zones || {};
+      zonesMap = { ...DEFAULT_ZONES, ...(msg.data.zones || {}) };
       rulesConfig = msg.data.config || {};
       wanConnected = msg.data.wanConnected;
       events = msg.data.events || [];
@@ -405,7 +678,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- ANTI-FLOODING ALERT IN-PLACE UPDATER & ALARM BUFFER ---
   let isSirenActive = false;
-  const handledAlarmEventIds = new Set();
+  const handledAlarmEventIds = new Set(DEFAULT_EVENTS.map(e => e.event_id));
   const activeSirenEventIds = new Set();
   let pageLoadTimestamp = Date.now();
   const PAGE_LOAD_GRACE_MS = 3000;
@@ -709,18 +982,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  function updateWanUI(connected, offlineQueueCount) {
+  function updateWanUI(connected, offlineQueueCount, customText) {
+    if (!wanStatusPill) return;
+    if (customText) {
+      wanStatusPill.className = 'status-chip online';
+      wanStatusPill.innerHTML = `<span class="pulse-dot"></span> ${customText}`;
+      if (btnToggleWan) {
+        btnToggleWan.textContent = 'Simulate WAN Loss';
+        btnToggleWan.className = 'btn-tactical btn-warn';
+      }
+      if (valBuffer) valBuffer.textContent = '0 EVTS';
+      return;
+    }
     if (connected) {
       wanStatusPill.className = 'status-chip online';
       wanStatusPill.innerHTML = `<span class="pulse-dot"></span> WAN CONNECTED (CENTRAL SYNC)`;
-      btnToggleWan.textContent = 'Simulate WAN Loss';
-      btnToggleWan.className = 'btn-tactical btn-warn';
+      if (btnToggleWan) {
+        btnToggleWan.textContent = 'Simulate WAN Loss';
+        btnToggleWan.className = 'btn-tactical btn-warn';
+      }
       if (valBuffer) valBuffer.textContent = '0 EVTS';
     } else {
       wanStatusPill.className = 'status-chip offline';
       wanStatusPill.innerHTML = `<span class="pulse-dot"></span> WAN DOWN: LOCAL BUFFER ACTIVE`;
-      btnToggleWan.textContent = 'Restore WAN Sync';
-      btnToggleWan.className = 'btn-tactical btn-cyan';
+      if (btnToggleWan) {
+        btnToggleWan.textContent = 'Restore WAN Sync';
+        btnToggleWan.className = 'btn-tactical btn-cyan';
+      }
       if (valBuffer) valBuffer.textContent = `${offlineQueueCount} EVTS (LOCAL)`;
     }
   }
@@ -1659,10 +1947,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Initial UI Render & Peer Initialization
+  // Immediate Asynchronous REST API Hydration on Startup
+  async function hydrateFromRest() {
+    try {
+      const [camsRes, alertsRes, zonesRes, teleRes] = await Promise.allSettled([
+        fetch('/api/cameras').then(r => r.ok ? r.json() : null),
+        fetch('/api/alerts').then(r => r.ok ? r.json() : null),
+        fetch('/api/cameras/CAM-01/zones').then(r => r.ok ? r.json() : null),
+        fetch('/api/telemetry').then(r => r.ok ? r.json() : null)
+      ]);
+
+      let updated = false;
+      if (camsRes.status === 'fulfilled' && camsRes.value) {
+        const liveCams = Array.isArray(camsRes.value) ? camsRes.value : (camsRes.value.cameras || null);
+        if (Array.isArray(liveCams) && liveCams.length > 0) {
+          const localMobile = cameras.find(c => c.id === 'CAM-MOBILE-01');
+          if (localMobile && localMobile.status === 'ONLINE' && localMobile.frameImage) {
+            const incMobile = liveCams.find(c => c.id === 'CAM-MOBILE-01');
+            if (incMobile) incMobile.frameImage = localMobile.frameImage;
+          }
+          cameras = liveCams;
+          updated = true;
+        }
+      }
+
+      if (alertsRes.status === 'fulfilled' && alertsRes.value && Array.isArray(alertsRes.value) && alertsRes.value.length > 0) {
+        events = alertsRes.value;
+        events.forEach(e => {
+          if (e && e.event_id) handledAlarmEventIds.add(e.event_id);
+        });
+        updated = true;
+      }
+
+      if (zonesRes.status === 'fulfilled' && zonesRes.value && zonesRes.value.zones) {
+        zonesMap['CAM-01'] = zonesRes.value.zones;
+        updated = true;
+      }
+
+      if (teleRes.status === 'fulfilled' && teleRes.value) {
+        updateTelemetry(teleRes.value);
+      }
+
+      if (updated) {
+        renderCameraList();
+        renderAlerts();
+        updateActiveCamera();
+      }
+    } catch (e) {
+      console.warn('[HYDRATE] REST hydration notice:', e.message);
+    }
+  }
+
+  // Initial UI Render, REST Hydration & Peer Initialization
+  renderAlerts();
   renderCameraList();
   updateActiveCamera();
   initPeer();
+  hydrateFromRest();
 
   // Background discover LAN endpoint for QR code generation
   fetch('/api/mobile-cam-info')
