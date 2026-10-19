@@ -312,7 +312,12 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
         <!-- 1. Curfew -->
         <div style="background:rgba(255,255,255,0.02);border:1px solid var(--border-subtle);padding:10px;border-radius:6px">
-          <div style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent-red);margin-bottom:8px">1. CURFEW WINDOW</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-family:var(--font-mono);font-size:11px;font-weight:700;color:var(--accent-red)">1. CURFEW WINDOW</span>
+            <label style="font-size:10px;display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="checkbox" id="inputCurfewEnabled"> Enable Curfew
+            </label>
+          </div>
           <div class="form-group" style="margin-bottom:8px">
             <label>Start Time (IST):</label>
             <input type="time" class="form-input" id="inputCurfewStart" value="22:00">

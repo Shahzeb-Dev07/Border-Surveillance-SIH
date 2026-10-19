@@ -24,6 +24,14 @@ class StorageEngine {
     this.wanConnected = true;
     this.offlineQueue = [];
     
+    // Clean up any stale ACTIVE events on startup - prior server runs that were terminated
+    // should not leave ghost active incidents
+    this.events.forEach(evt => {
+      if (evt.system_status === 'ACTIVE') {
+        evt.system_status = 'RESOLVED';
+      }
+    });
+
     // Restore any previously unsynced events into offline queue if started in disconnected mode
     this.events.forEach(evt => {
       if (evt.sync_status === 'LOCAL_BUFFERED') {
@@ -168,10 +176,10 @@ class StorageEngine {
           severity: 'CRITICAL',
           color: '#ff3d71',
           points: [
-            { x: 0.02, y: 0.02 },
-            { x: 0.98, y: 0.02 },
-            { x: 0.98, y: 0.98 },
-            { x: 0.02, y: 0.98 }
+            { x: 0.15, y: 0.15 },
+            { x: 0.85, y: 0.15 },
+            { x: 0.85, y: 0.85 },
+            { x: 0.15, y: 0.85 }
           ],
           enabled: true
         }

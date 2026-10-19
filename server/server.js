@@ -26,13 +26,13 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/api', apiRoutes);
 
 // Mobile Camera Web App route (TensorFlow.js COCO-SSD Edge Ingestion)
-app.get('/mobile-cam', (req, res) => {
+app.get(['/mobile-cam', '/mobile-cam.html'], (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'mobile-cam.html'));
 });
 
 // Fallback to index.html for SPA
 app.use((req, res, next) => {
-  if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/assets') && req.path !== '/mobile-cam') {
+  if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/assets') && !req.path.startsWith('/mobile-cam')) {
     return res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
   }
   next();
@@ -109,6 +109,16 @@ function broadcastCameraUpdate() {
 // Hook cameraManager status transitions to broadcast immediately
 cameraManager.onStatusChange = () => {
   broadcastCameraUpdate();
+};
+
+// Hook immediate event resolution broadcast (e.g. camera offline / disconnect)
+cameraManager.onEventsResolved = (resolvedEvents) => {
+  if (resolvedEvents && resolvedEvents.length > 0) {
+    broadcast({
+      type: 'ALERTS_UPDATE',
+      data: resolvedEvents
+    });
+  }
 };
 
 // Extracted shared WebSocket connection & message handling

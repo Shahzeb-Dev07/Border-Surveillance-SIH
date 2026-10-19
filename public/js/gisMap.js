@@ -141,7 +141,7 @@ class TacticalGisMap {
 
       // Outer Selection Ring
       if (isSelected) {
-        ctx.strokeStyle = '#5b8af5';
+        ctx.strokeStyle = '#5145CD';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(nx, ny, 9, 0, Math.PI * 2);
@@ -149,7 +149,7 @@ class TacticalGisMap {
       }
 
       // Node Icon Point
-      ctx.fillStyle = hasCritical ? '#e74c5e' : (hasHigh ? '#f5a623' : (isSelected ? '#5b8af5' : '#34c759'));
+      ctx.fillStyle = hasCritical ? '#DC2626' : (hasHigh ? '#D97706' : (isSelected ? '#5145CD' : '#10B981'));
       ctx.beginPath();
       ctx.arc(nx, ny, 4.5, 0, Math.PI * 2);
       ctx.fill();

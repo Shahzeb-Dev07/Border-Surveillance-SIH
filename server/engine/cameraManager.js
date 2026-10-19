@@ -175,21 +175,10 @@ class CameraManager {
         }
       });
 
-      // Object B: Suspect Person loitering & approaching exclusion fence
-      // Periodically moves close to the barbed wire exclusion zone
+      // Object B: Civilian / Villager walking along distant upper mountain trail (outside exclusion fence)
       const cycle = (t % 60);
-      let suspectX = 0.28;
-      let suspectY = 0.65;
-
-      if (cycle < 25) {
-        // Lingers near fence (triggers dwell & fence breach)
-        suspectX = 0.26 + 0.04 * Math.sin(cycle * 0.2);
-        suspectY = 0.68 + 0.03 * Math.cos(cycle * 0.2);
-      } else {
-        // Moves back toward rocks
-        suspectX = 0.38 + (cycle - 25) * 0.015;
-        suspectY = 0.58 + (cycle - 25) * 0.008;
-      }
+      const suspectX = 0.50 + 0.06 * Math.sin(t * 0.05);
+      const suspectY = 0.18 + 0.02 * Math.cos(t * 0.05);
 
       dets.push({
         classLabel: 'person',
@@ -278,10 +267,9 @@ class CameraManager {
       });
     } else if (camera.id === 'CAM-03') {
       // Scenario 3: Night IR Sector 4
-      // Night infiltrator walking along the zero-line illuminated wire
-      const cycle = (t % 50);
-      const infilY = 0.62 + 0.12 * Math.sin(cycle * 0.12);
-      const infilX = 0.52 - (infilY - 0.62) * 0.2;
+      // Observation Post Sentry scanning distant terrain (outside zero-line illuminated wire)
+      const infilX = 0.45 + 0.04 * Math.sin(t * 0.06);
+      const infilY = 0.20 + 0.02 * Math.cos(t * 0.06);
 
       dets.push({
         classLabel: 'person',
@@ -423,6 +411,12 @@ class CameraManager {
       this.mobileClientConnected = false;
       const prev = cam.status;
       cam.status = 'OFFLINE';
+      if (cam.tracker) cam.tracker.reset();
+      ruleEngine.clearCameraState(cameraId);
+      const resolved = this.alertEngine.resolveCameraEvents(cameraId, 'CAMERA_OFFLINE');
+      if (resolved.length > 0 && this.onEventsResolved) {
+        this.onEventsResolved(resolved);
+      }
       if (cam.status !== prev && this.onStatusChange) {
         this.onStatusChange(cam);
       }
@@ -437,6 +431,12 @@ class CameraManager {
       const prev = cam.status;
       if (!connected && (cam.hasReceivedMobileMessage || cam.hasReceivedConnect)) {
         cam.status = 'OFFLINE';
+        if (cam.tracker) cam.tracker.reset();
+        ruleEngine.clearCameraState('CAM-MOBILE-01');
+        const resolved = this.alertEngine.resolveCameraEvents('CAM-MOBILE-01', 'CAMERA_OFFLINE');
+        if (resolved.length > 0 && this.onEventsResolved) {
+          this.onEventsResolved(resolved);
+        }
       }
       if (cam.status !== prev && this.onStatusChange) {
         this.onStatusChange(cam);
@@ -473,15 +473,24 @@ class CameraManager {
           camera.status = 'WAITING';
           dets = [];
         } else if (camera.clientConnected === false || timeSinceLastMobile > 15000) {
+          if (camera.status !== 'OFFLINE') {
+            if (camera.tracker) camera.tracker.reset();
+            ruleEngine.clearCameraState(camera.id);
+            const resolved = this.alertEngine.resolveCameraEvents(camera.id, 'CAMERA_OFFLINE');
+            if (resolved.length > 0) frameEvents.push(...resolved);
+          }
           camera.status = 'OFFLINE';
           dets = [];
         } else if (timeSinceLastMobile > 3000) {
+          if (camera.status !== 'STALE') {
+            console.log(`[MOBILE] ${camera.id} marked STALE (rejection reason=STALE_DETECTION, age=${timeSinceLastMobile}ms)`);
+          }
           camera.status = 'STALE';
           dets = [];
         } else {
           camera.status = 'ONLINE';
           dets = camera.latestMobileDetections || [];
-          camera.lastKnownPersonCount = dets.length;
+          camera.lastKnownPersonCount = dets.filter(d => (d.classLabel || '').toLowerCase() === 'person').length;
         }
 
         if (camera.status !== prevStatus && this.onStatusChange) {
@@ -555,6 +564,12 @@ class CameraManager {
       // Update camera live state
       camera.activeDetections = trackedObjects;
       camera.currentMeta = meta;
+    }
+
+    // Safety sweep: automatically resolve stale active events across all cameras if stream interrupted
+    const staleResolved = this.alertEngine.checkGlobalTimeouts(6000);
+    if (staleResolved.length > 0) {
+      frameEvents.push(...staleResolved);
     }
 
     return {

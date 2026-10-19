@@ -107,17 +107,21 @@ class AlertEngine {
       }
     }
 
-    // 2. Clear inactive events (triggers no longer firing for > 5 seconds)
+    // 2. Clear inactive events for THIS camera (triggers no longer firing for > 5 seconds)
     const activeKeysInCurrentFrame = new Set(triggers.map(t => `${camera.id}_${t.ruleId}_${t.trackId}`));
     for (const [key, event] of this.activeEvents.entries()) {
+      // Only process events belonging to this camera in this tick
+      if (event.camera_id !== camera.id) continue;
+
       if (!activeKeysInCurrentFrame.has(key)) {
         const timeSinceActive = now - new Date(event.last_active_at).getTime();
         if (timeSinceActive > 5000) {
           // Event has concluded
           event.system_status = 'RESOLVED';
+          event.details = (event.details || '') + ' [RESOLVED: Target exited zone/grace period elapsed]';
           this.storage.saveEvent(event);
           generatedOrUpdatedEvents.push(event);
-          console.log(`[ALERT] event=${event.event_id} camera=${event.camera_id} track=${event.track_id} system_status=RESOLVED`);
+          console.log(`[ALERT] event=${event.event_id} camera=${event.camera_id} track=${event.track_id} system_status=RESOLVED reason=EXIT_ZONE_TIMEOUT`);
           this.activeEvents.delete(key);
 
           // Set cooldown on this zone/track to prevent instant re-trigger flapping
@@ -128,6 +132,44 @@ class AlertEngine {
     }
 
     return generatedOrUpdatedEvents;
+  }
+
+  // Immediately resolve all active events for a camera (e.g. camera offline, disconnected, reset)
+  resolveCameraEvents(cameraId, reason = 'CAMERA_OFFLINE') {
+    const resolved = [];
+    const now = Date.now();
+    for (const [key, event] of this.activeEvents.entries()) {
+      if (event.camera_id === cameraId) {
+        event.system_status = 'RESOLVED';
+        event.details = (event.details || '') + ` [RESOLVED: ${reason}]`;
+        this.storage.saveEvent(event);
+        resolved.push(event);
+        console.log(`[ALERT] event=${event.event_id} camera=${cameraId} track=${event.track_id} system_status=RESOLVED reason=${reason}`);
+        this.activeEvents.delete(key);
+
+        const cooldownKey = `${cameraId}_${event.zone_id || 'global'}_${event.track_id}`;
+        this.cooldowns.set(cooldownKey, now + 5000);
+      }
+    }
+    return resolved;
+  }
+
+  // Global safety check for stale active events across all cameras
+  checkGlobalTimeouts(maxAgeMs = 6000) {
+    const resolved = [];
+    const now = Date.now();
+    for (const [key, event] of this.activeEvents.entries()) {
+      const timeSinceActive = now - new Date(event.last_active_at).getTime();
+      if (timeSinceActive > maxAgeMs) {
+        event.system_status = 'RESOLVED';
+        event.details = (event.details || '') + ' [RESOLVED: STALE_DETECTION_TIMEOUT]';
+        this.storage.saveEvent(event);
+        resolved.push(event);
+        console.log(`[ALERT] event=${event.event_id} camera=${event.camera_id} track=${event.track_id} system_status=RESOLVED reason=STALE_DETECTION`);
+        this.activeEvents.delete(key);
+      }
+    }
+    return resolved;
   }
 
   getActiveEvents() {

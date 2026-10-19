@@ -170,7 +170,7 @@ router.get('/mobile-cam-info', (req, res) => {
     lanIp,
     httpUrl: `http://${lanIp}:${httpPort}`,
     httpsUrl: `https://${lanIp}:${httpsPort}`,
-    mobileUrl: `https://${lanIp}:${httpsPort}/mobile-cam`,
+    mobileUrl: `https://${lanIp}:${httpsPort}/mobile-cam.html`,
     httpsAvailable
   });
 });

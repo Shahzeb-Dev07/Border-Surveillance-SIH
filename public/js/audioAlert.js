@@ -4,16 +4,25 @@ class TacticalAudioAlert {
     this.audioCtx = null;
     this.isMuted = false;
     this.sirenOsc = null;
+    this.sirenGain = null;
+    this.onSirenEnded = null;
   }
 
   _initContext() {
     if (!this.audioCtx) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.audioCtx = new AudioContext();
+      if (AudioContext) {
+        this.audioCtx = new AudioContext();
+      }
     }
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume();
+    if (this.audioCtx && this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().catch(() => {});
     }
+  }
+
+  // User gesture handler to unlock AudioContext if initially suspended
+  unlock() {
+    this._initContext();
   }
 
   toggleMute() {
@@ -29,6 +38,7 @@ class TacticalAudioAlert {
     if (this.isMuted) return;
     try {
       this._initContext();
+      if (!this.audioCtx) return;
       const osc = this.audioCtx.createOscillator();
       const gain = this.audioCtx.createGain();
 
@@ -51,10 +61,11 @@ class TacticalAudioAlert {
   }
 
   // Continuous alarm siren for unresolved critical breaches
-  startSiren() {
+  startSiren(durationSec = 8) {
     if (this.isMuted || this.sirenOsc) return;
     try {
       this._initContext();
+      if (!this.audioCtx) return;
       this.sirenOsc = this.audioCtx.createOscillator();
       this.sirenGain = this.audioCtx.createGain();
 
@@ -63,7 +74,8 @@ class TacticalAudioAlert {
 
       // Oscillate frequency
       const now = this.audioCtx.currentTime;
-      for (let i = 0; i < 10; i++) {
+      const cycles = Math.ceil(durationSec / 0.8);
+      for (let i = 0; i < cycles; i++) {
         this.sirenOsc.frequency.linearRampToValueAtTime(950, now + i * 0.8 + 0.4);
         this.sirenOsc.frequency.linearRampToValueAtTime(650, now + i * 0.8 + 0.8);
       }
@@ -73,9 +85,13 @@ class TacticalAudioAlert {
       this.sirenGain.connect(this.audioCtx.destination);
 
       this.sirenOsc.start();
-      this.sirenOsc.stop(now + 8); // Max 8 seconds siren
+      this.sirenOsc.stop(now + durationSec); // Configured duration
       this.sirenOsc.onended = () => {
         this.sirenOsc = null;
+        this.sirenGain = null;
+        if (typeof this.onSirenEnded === 'function') {
+          this.onSirenEnded();
+        }
       };
     } catch (e) {
       console.warn('Siren error:', e);
@@ -88,7 +104,12 @@ class TacticalAudioAlert {
         this.sirenOsc.stop();
       } catch (e) {}
       this.sirenOsc = null;
+      this.sirenGain = null;
     }
+  }
+
+  isSirenPlaying() {
+    return !!this.sirenOsc;
   }
 }
 

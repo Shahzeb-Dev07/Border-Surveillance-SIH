@@ -67,14 +67,19 @@ class CanvasRenderer {
       ctx.drawImage(img, 0, 0, w, h);
     } else if (this.currentCamera.id === 'CAM-MOBILE-01') {
       if (this.currentCamera.frameImage) {
-        if (!this.mobileFrameImg) {
-          this.mobileFrameImg = new Image();
+        if (this._lastLoadedFrameSrc !== this.currentCamera.frameImage) {
+          this._lastLoadedFrameSrc = this.currentCamera.frameImage;
+          const nextImg = new Image();
+          nextImg.onload = () => {
+            this._readyMobileImg = nextImg;
+          };
+          nextImg.onerror = () => {
+            console.warn('[CANVAS] Failed to decode incoming mobile camera frame');
+          };
+          nextImg.src = this.currentCamera.frameImage;
         }
-        if (this.mobileFrameImg.src !== this.currentCamera.frameImage) {
-          this.mobileFrameImg.src = this.currentCamera.frameImage;
-        }
-        if (this.mobileFrameImg.complete && this.mobileFrameImg.naturalWidth > 0) {
-          ctx.drawImage(this.mobileFrameImg, 0, 0, w, h);
+        if (this._readyMobileImg && this._readyMobileImg.naturalWidth > 0) {
+          ctx.drawImage(this._readyMobileImg, 0, 0, w, h);
           // Draw subtle tactical reticle & scanline for military C2 focal aesthetic
           ctx.save();
           ctx.strokeStyle = 'rgba(0, 229, 255, 0.25)';
@@ -221,13 +226,16 @@ class CanvasRenderer {
 
   _renderDetections(ctx, w, h) {
     for (const obj of this.activeDetections) {
-      const bx = obj.bbox.x * w;
-      const by = obj.bbox.y * h;
-      const bw = obj.bbox.w * w;
-      const bh = obj.bbox.h * h;
+      if (!obj || !obj.bbox) continue;
+      const bx = (obj.bbox.x || 0) * w;
+      const by = (obj.bbox.y || 0) * h;
+      const bw = (obj.bbox.w || 0) * w;
+      const bh = (obj.bbox.h || 0) * h;
 
       const cl = (obj.classLabel || 'object').toLowerCase();
-      const isSuspect = (cl === 'person' && obj.dwellSec > 4);
+      // Only treat as suspect/alert if actively breaching a restricted zone or flagged as a verified threat
+      const isBreaching = obj.zoneStatus === 'INSIDE' || obj.isAlert === true || obj.breachActive === true;
+      const isSuspect = (cl === 'person' && isBreaching);
       const isVehicle = ['car', 'truck', 'bus', 'motorcycle', 'bicycle', 'vehicle'].includes(cl);
       const isDevice = ['cell phone', 'phone', 'laptop', 'mouse', 'keyboard', 'tv', 'remote'].includes(cl);
       const isThreat = ['knife', 'scissors', 'weapon', 'gun'].includes(cl);
@@ -247,16 +255,27 @@ class CanvasRenderer {
       ctx.fillStyle = isSuspect ? 'rgba(231, 76, 94, 0.08)' : (isThreat ? 'rgba(231, 76, 94, 0.08)' : 'rgba(52, 199, 89, 0.04)');
       ctx.fillRect(bx, by, bw, bh);
 
-      // 2. Clean Label Pill at Top
+      // 2. Proximity & Metric Information
+      let proxLabel = '';
+      if (obj.proximity) {
+        proxLabel = obj.proximity.isMetric ? `${obj.proximity.distanceM}m` : `[${obj.proximity.level}]`;
+      } else if (obj.metrics && obj.metrics.isCalibrated && obj.metrics.estimatedDistanceM) {
+        proxLabel = `${obj.metrics.estimatedDistanceM}m`;
+      } else {
+        const normH = obj.bbox.h || (bh / h);
+        proxLabel = normH >= 0.35 ? '[NEAR]' : (normH >= 0.14 ? '[MED]' : '[FAR]');
+      }
+
+      // 3. Clean Label Pill at Top with Track ID and Proximity
       const confPct = Math.round((obj.confidence || 0.9) * 100);
       let labelName = (obj.classLabel || 'object').replace(/_/g, ' ');
-      // Capitalize first letter
       labelName = labelName.charAt(0).toUpperCase() + labelName.slice(1);
-      const tagText = isSuspect ? `${labelName} · Alert` : `${labelName} ${confPct}%`;
+      const trkNum = obj.trackId ? `#${obj.trackId} ` : '';
+      const tagText = isSuspect ? `${trkNum}${labelName} · Alert · ${proxLabel}` : `${trkNum}${labelName} ${confPct}% · ${proxLabel}`;
 
       ctx.font = '500 11px "Inter", -apple-system, sans-serif';
       const textWidth = ctx.measureText(tagText).width;
-      const pillW = textWidth + 10;
+      const pillW = textWidth + 12;
       const pillH = 18;
       const pillY = by >= pillH ? by - pillH : by;
 
@@ -270,7 +289,37 @@ class CanvasRenderer {
       }
 
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(tagText, bx + 5, pillY + 13);
+      ctx.fillText(tagText, bx + 6, pillY + 13);
+
+      // 4. Spoof / Presentation Attack Flag (Photo/Screen detected)
+      if (obj.presentationAttackDetected || obj.spoofDetected) {
+        const warnText = '⚠️ PHOTO / SCREEN DETECTED';
+        ctx.font = '600 10px "Inter", -apple-system, sans-serif';
+        const warnW = ctx.measureText(warnText).width + 10;
+        const warnY = pillY >= 18 ? pillY - 18 : by + bh + 4;
+        ctx.fillStyle = '#ff9800';
+        ctx.fillRect(bx, warnY, warnW, 16);
+        ctx.fillStyle = '#000000';
+        ctx.fillText(warnText, bx + 5, warnY + 12);
+      }
+
+      // 5. Ground Contact Point Indicator (Foot contact used for zone intrusion evaluation)
+      const gx = obj.groundPoint ? (obj.groundPoint.x * w) : (bx + bw / 2);
+      const gy = obj.groundPoint ? (obj.groundPoint.y * h) : (by + bh);
+
+      ctx.save();
+      ctx.strokeStyle = isSuspect ? 'rgba(231, 76, 94, 0.9)' : 'rgba(52, 199, 89, 0.9)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(gx, gy, 8, 3.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = isSuspect ? '#e74c5e' : '#34c759';
+      ctx.beginPath();
+      ctx.arc(gx, gy, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       ctx.restore();
 
       // 6. MoveNet Pose Skeleton Overlay (if pose keypoints attached)

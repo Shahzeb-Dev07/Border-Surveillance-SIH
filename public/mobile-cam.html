@@ -740,10 +740,18 @@
           </div>
 
           <div class="status-item">
-            <span class="status-label">AI & POSE:</span>
+            <span class="status-label">OBJECT DETECTOR:</span>
             <span class="status-val" id="statAiModel">
               <span class="dot amber"></span>
               <span>Loading...</span>
+            </span>
+          </div>
+
+          <div class="status-item">
+            <span class="status-label">POSE ENGINE:</span>
+            <span class="status-val" id="statPoseStatus">
+              <span class="dot amber"></span>
+              <span>INITIALIZING</span>
             </span>
           </div>
 
@@ -857,6 +865,7 @@
       const statMeasureMode = document.getElementById('statMeasureMode');
       const statSensor = document.getElementById('statSensor');
       const statAiModel = document.getElementById('statAiModel');
+      const statPoseStatus = document.getElementById('statPoseStatus');
       const statPersonCount = document.getElementById('statPersonCount');
       const statCadence = document.getElementById('statCadence');
       const statServer = document.getElementById('statServer');
@@ -994,8 +1003,8 @@
 
       // Offscreen preview canvas for lightweight video streaming to C2
       const previewCanvas = document.createElement('canvas');
-      previewCanvas.width = 480;
-      previewCanvas.height = 270;
+      previewCanvas.width = 360;
+      previewCanvas.height = 202;
       const previewCtx = previewCanvas.getContext('2d');
 
       // Local client-side tracking state
@@ -1685,6 +1694,10 @@
       btnSwitchCam?.addEventListener('click', async () => {
         currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
         if (dbgFacing) dbgFacing.textContent = currentFacing;
+        if (cameraCalibration.status === 'CALIBRATED') {
+          console.warn('[CALIBRATION] Camera switched to ' + currentFacing + '. Invalidating calibration.');
+          setCalibrationStatus('CALIBRATION_INVALID');
+        }
         await startCamera(currentFacing);
       });
 
@@ -1722,9 +1735,26 @@
         video.style.transform = `scale(${nextZoom})`;
         video.style.transformOrigin = 'center center';
         video.style.transition = 'transform 0.25s ease-out';
+        canvas.style.transform = (nextZoom > 1.0) ? `scale(${nextZoom})` : '';
+        canvas.style.transformOrigin = 'center center';
+        canvas.style.transition = 'transform 0.25s ease-out';
         if (btnToggleZoom) btnToggleZoom.textContent = `🔍 ${nextZoom.toFixed(1)}x`;
+
+        // Changing zoom changes effective optical FOV and pixel scaling, invalidating ground plane calibration
+        if (cameraCalibration.status === 'CALIBRATED') {
+          console.warn('[CALIBRATION] Optical/digital zoom changed to ' + nextZoom + 'x. Invalidating ground-plane calibration.');
+          setCalibrationStatus('CALIBRATION_INVALID');
+        }
       }
       btnToggleZoom?.addEventListener('click', cycleZoom);
+
+      // Handle orientation change to invalidate calibration if device is rotated
+      window.addEventListener('orientationchange', () => {
+        if (cameraCalibration.status === 'CALIBRATED') {
+          console.warn('[CALIBRATION] Device orientation changed. Invalidating calibration.');
+          setCalibrationStatus('CALIBRATION_INVALID');
+        }
+      });
 
       // Flash / Torch Control
       async function toggleTorch() {
@@ -1786,6 +1816,8 @@
       const urlParams = new URLSearchParams(window.location.search);
       const targetPeerId = urlParams.get('peer');
       const targetServer = urlParams.get('server');
+      const isCloudHost = window.location.protocol === 'https:' &&
+        !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
       const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('ibvap_mobile_cam') : null;
       let peer = null;
       let peerConn = null;
@@ -1793,14 +1825,31 @@
       function sendMobilePayload(payload) {
         let delivered = false;
         if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify(payload));
-          delivered = true;
+          try {
+            ws.send(JSON.stringify(payload));
+            delivered = true;
+          } catch (e) {}
         }
         if (peerConn && peerConn.open) {
           try {
-            peerConn.send(payload);
+            const dc = peerConn.dataChannel;
+            if (dc && dc.bufferedAmount > 64 * 1024 && payload.frameImage) {
+              const lightPayload = Object.assign({}, payload, { frameImage: null });
+              peerConn.send(lightPayload);
+            } else {
+              peerConn.send(payload);
+            }
             delivered = true;
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[PEER] DataChannel send error, falling back to light payload:', e);
+            try {
+              if (payload.frameImage) {
+                const lightPayload = Object.assign({}, payload, { frameImage: null });
+                peerConn.send(lightPayload);
+                delivered = true;
+              }
+            } catch (fallbackErr) {}
+          }
         }
         if (bc) {
           try {
@@ -1811,43 +1860,150 @@
         return delivered;
       }
 
+      let peerConnecting = false;
+      let peerRetryTimer = null;
+
       function connectPeerJs(targetId) {
         if (!targetId || typeof Peer === 'undefined') return;
+        if (peerConn && peerConn.open) return;
+        if (peerConnecting) return;
+        peerConnecting = true;
+
+        if (peerRetryTimer) {
+          clearTimeout(peerRetryTimer);
+          peerRetryTimer = null;
+        }
+
         try {
-          peer = new Peer();
-          peer.on('open', (myId) => {
-            const conn = peer.connect(targetId, { reliable: true });
-            conn.on('open', () => {
-              peerConn = conn;
-              setStatus(statServer, 'ok', 'Connected (Cloud Peer)');
-              if (debugWsUrl) debugWsUrl.textContent = `webrtc://${targetId.substring(0, 10)}...`;
-              sendMobilePayload({
-                type: 'MOBILE_CAMERA_CONNECT',
-                cameraId: 'CAM-MOBILE-01',
-                device: 'mobile'
+          if (!peer || peer.destroyed) {
+            peer = new Peer({
+              host: '0.peerjs.com',
+              port: 443,
+              path: '/',
+              secure: true,
+              config: {
+                iceServers: [
+                  { urls: 'stun:stun.l.google.com:19302' },
+                  { urls: 'stun:stun1.l.google.com:19302' },
+                  { urls: 'stun:stun2.l.google.com:19302' },
+                  { urls: 'stun:stun.cloudflare.com:3478' },
+                  {
+                    urls: [
+                      'turn:openrelay.metered.ca:80',
+                      'turn:openrelay.metered.ca:443',
+                      'turn:openrelay.metered.ca:443?transport=tcp'
+                    ],
+                    username: 'openrelay',
+                    credential: 'openrelay'
+                  }
+                ]
+              }
+            });
+
+            peer.on('error', (err) => {
+              console.warn('[PEER] Mobile peer error:', err);
+              peerConnecting = false;
+              if (!peerConn || !peerConn.open) {
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                  setStatus(statServer, 'warn', 'Cloud Peer Retrying...');
+                  peerRetryTimer = setTimeout(() => connectPeerJs(targetId), 4000);
+                }
+              }
+            });
+
+            peer.on('disconnected', () => {
+              console.warn('[PEER] Mobile peer disconnected from signaling');
+              try { peer.reconnect(); } catch (e) {}
+            });
+          }
+
+          const setupConnection = () => {
+            try {
+              console.log('[PEER] Connecting to target dashboard peer:', targetId);
+              const conn = peer.connect(targetId, { reliable: true });
+              let connOpen = false;
+
+              // 10-second connection timeout
+              const connTimeout = setTimeout(() => {
+                if (!connOpen) {
+                  console.warn('[PEER] Connection timeout to peer:', targetId);
+                  try { conn.close(); } catch (e) {}
+                  peerConnecting = false;
+                  if (!ws || ws.readyState !== WebSocket.OPEN) {
+                    setStatus(statServer, 'warn', 'Peer Timeout, Retrying...');
+                    peerRetryTimer = setTimeout(() => connectPeerJs(targetId), 3000);
+                  }
+                }
+              }, 10000);
+
+              conn.on('open', () => {
+                connOpen = true;
+                clearTimeout(connTimeout);
+                peerConnecting = false;
+                peerConn = conn;
+                console.log('[PEER] WebRTC DataChannel established with PC dashboard!');
+                setStatus(statServer, 'ok', 'Connected (Cloud Peer)');
+                if (debugWsUrl) debugWsUrl.textContent = `webrtc://${targetId.substring(0, 10)}...`;
+                sendMobilePayload({
+                  type: 'MOBILE_CAMERA_CONNECT',
+                  cameraId: 'CAM-MOBILE-01',
+                  device: 'mobile'
+                });
+                if (heartbeatTimer) clearInterval(heartbeatTimer);
+                heartbeatTimer = setInterval(sendHeartbeat, 2500);
               });
-              if (heartbeatTimer) clearInterval(heartbeatTimer);
-              heartbeatTimer = setInterval(sendHeartbeat, 2500);
-            });
-            conn.on('close', () => {
-              peerConn = null;
-              if (!ws || ws.readyState !== WebSocket.OPEN) setStatus(statServer, 'error', 'Disconnected');
-            });
-          });
-        } catch (e) {}
+
+              conn.on('close', () => {
+                clearTimeout(connTimeout);
+                peerConn = null;
+                peerConnecting = false;
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                  setStatus(statServer, 'error', 'Disconnected');
+                  peerRetryTimer = setTimeout(() => connectPeerJs(targetId), 4000);
+                }
+              });
+
+              conn.on('error', (err) => {
+                clearTimeout(connTimeout);
+                console.warn('[PEER] Connection error:', err);
+                peerConnecting = false;
+                if (!ws || ws.readyState !== WebSocket.OPEN) {
+                  peerRetryTimer = setTimeout(() => connectPeerJs(targetId), 4000);
+                }
+              });
+            } catch (err) {
+              peerConnecting = false;
+              peerRetryTimer = setTimeout(() => connectPeerJs(targetId), 4000);
+            }
+          };
+
+          if (peer.open) {
+            setupConnection();
+          } else {
+            peer.once('open', setupConnection);
+          }
+        } catch (e) {
+          peerConnecting = false;
+          peerRetryTimer = setTimeout(() => connectPeerJs(targetId), 4000);
+        }
       }
 
       function connectWebSocket() {
         if (reconnectTimer) clearTimeout(reconnectTimer);
         let wsUrl;
+        const isCloudHost = window.location.protocol === 'https:' &&
+          !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
+
         if (targetServer) {
           const wsProtocol = targetServer.startsWith('https') ? 'wss:' : (targetServer.includes(':3443') ? 'wss:' : 'ws:');
           const cleanHost = targetServer.replace(/^https?:\/\//, '');
           wsUrl = `${wsProtocol}//${cleanHost}`;
         } else {
-          if (location.hostname.endsWith('vercel.app')) {
-            if (targetPeerId) connectPeerJs(targetPeerId);
-            else {
+          // On cloud frontends (Vercel) without custom backend server, persistent WebSockets are unsupported.
+          if (isCloudHost || location.hostname.endsWith('vercel.app')) {
+            if (targetPeerId) {
+              connectPeerJs(targetPeerId);
+            } else {
               setStatus(statServer, 'warn', 'Cloud Standby');
               if (debugWsUrl) debugWsUrl.textContent = 'cloud://webrtc-standby';
             }
@@ -1858,7 +2014,9 @@
         }
 
         if (debugWsUrl) debugWsUrl.textContent = wsUrl;
-        setStatus(statServer, 'warn', 'Connecting...');
+        if (!peerConn || !peerConn.open) {
+          setStatus(statServer, 'warn', 'Connecting...');
+        }
 
         try {
           ws = new WebSocket(wsUrl);
@@ -1874,7 +2032,12 @@
             heartbeatTimer = setInterval(sendHeartbeat, 2500);
           };
           ws.onclose = () => {
-            if (!peerConn || !peerConn.open) setStatus(statServer, 'error', 'Disconnected');
+            if (!peerConn || !peerConn.open) {
+              setStatus(statServer, 'error', 'Disconnected');
+              if (targetPeerId) {
+                connectPeerJs(targetPeerId);
+              }
+            }
             if (heartbeatTimer) {
               clearInterval(heartbeatTimer);
               heartbeatTimer = null;
@@ -1882,8 +2045,15 @@
             reconnectTimer = setTimeout(connectWebSocket, reconnectDelay);
             reconnectDelay = Math.min(10000, reconnectDelay * 1.5);
           };
-          ws.onerror = () => {};
+          ws.onerror = () => {
+            if (targetPeerId) {
+              connectPeerJs(targetPeerId);
+            }
+          };
         } catch (e) {
+          if (targetPeerId) {
+            connectPeerJs(targetPeerId);
+          }
           reconnectTimer = setTimeout(connectWebSocket, 3000);
         }
       }
@@ -1905,18 +2075,22 @@
         }
       }
 
-      function updatePoseStatusUI() {
+      function updatePoseStatusUI(activePersons = 0) {
         if (!poseAvailable) {
           if (btnTogglePose) {
             btnTogglePose.classList.add('danger');
-            btnTogglePose.textContent = 'Pose: N/A';
+            btnTogglePose.classList.remove('off');
+            btnTogglePose.textContent = 'Pose: N/A'; // ● UNAVAILABLE
           }
+          if (statPoseStatus) setStatus(statPoseStatus, 'error', 'UNAVAILABLE');
           if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD ONLY';
         } else if (!poseEnabled) {
           if (btnTogglePose) {
             btnTogglePose.classList.add('off');
+            btnTogglePose.classList.remove('danger');
             btnTogglePose.textContent = 'Pose: OFF';
           }
+          if (statPoseStatus) setStatus(statPoseStatus, 'warn', 'DISABLED');
           if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD (POSE OFF)';
         } else if (poseReady) {
           if (btnTogglePose) {
@@ -1924,26 +2098,47 @@
             btnTogglePose.textContent = 'Pose: ON';
           }
           if (aiPipelineBadge) aiPipelineBadge.textContent = 'COCO-SSD + MOVENET';
+          if (statPoseStatus) {
+            if (activePersons > 0) {
+              setStatus(statPoseStatus, 'ok', `ACTIVE (${activePersons} P)`);
+            } else {
+              setStatus(statPoseStatus, 'ok', 'PERSON NOT DETECTED');
+            }
+          }
+        } else {
+          if (btnTogglePose) {
+            btnTogglePose.classList.remove('off', 'danger');
+            btnTogglePose.textContent = 'Pose: INIT...';
+          }
+          if (statPoseStatus) setStatus(statPoseStatus, 'warn', 'INITIALIZING');
         }
       }
 
       async function loadPoseModel() {
+        if (statPoseStatus) setStatus(statPoseStatus, 'warn', 'INITIALIZING');
         try {
+          if (typeof tf !== 'undefined' && tf.ready) {
+            await tf.ready();
+          }
           if (typeof poseDetection === 'undefined' || !poseDetection.createDetector) {
             throw new Error('poseDetection library unavailable');
           }
+          // MoveNet MultiPose Lightning: @tensorflow-models/pose-detection expects 'MultiPose.Lightning'
+          // We query poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING with fallback to 'MultiPose.Lightning'
+          const modelType = (poseDetection.movenet && poseDetection.movenet.modelType && poseDetection.movenet.modelType.MULTIPOSE_LIGHTNING) || 'MultiPose.Lightning'; // MULTIPOSE_LIGHTNING
           poseDetector = await poseDetection.createDetector(
             poseDetection.SupportedModels.MoveNet,
-            { modelType: 'MULTIPOSE_LIGHTNING' }
+            { modelType: modelType }
           );
           poseReady = true;
           poseAvailable = true;
-          updatePoseStatusUI();
+          updatePoseStatusUI(0);
         } catch (err) {
+          console.error('[MOBILE-CAM] MoveNet load error:', err);
           poseDetector = null;
           poseReady = false;
           poseAvailable = false;
-          updatePoseStatusUI();
+          updatePoseStatusUI(0);
         }
       }
 
@@ -1964,7 +2159,7 @@
         const cycleStart = performance.now();
 
         try {
-          if (isStreaming && videoReady && cocoReady && video.readyState >= 2 && video.videoWidth > 0) {
+          if (isStreaming && videoReady && video.readyState >= 2 && video.videoWidth > 0) {
             const actualW = video.videoWidth;
             const actualH = video.videoHeight;
             const now = Date.now();
@@ -1982,12 +2177,28 @@
               dy: Number((dPitchCycle / vFov).toFixed(4))
             };
 
-            // Run COCO-SSD multi-object detection
-            const preds = await cocoModel.detect(video);
+            // Run COCO-SSD multi-object detection if model is loaded and ready
+            let preds = [];
+            if (cocoReady && cocoModel) {
+              try {
+                preds = await cocoModel.detect(video);
+              } catch (detErr) {
+                preds = [];
+              }
+            }
             const filteredPreds = (preds || []).filter(p => {
               if ((p.score || 0) < 0.35) return false;
-              if (detectFilterMode === 'person') return p.class === 'person';
-              return true;
+              const cl = (p.class || '').toLowerCase();
+              if (detectFilterMode === 'person') {
+                // Keep person AND screen/display devices so downstream anti-spoof checks function
+                const isScreenDevice = ['cell phone', 'phone', 'laptop', 'tv', 'screen', 'remote'].includes(cl);
+                return cl === 'person' || isScreenDevice;
+              }
+              // In ALL mode, border operational classes (person, vehicle, screen devices, weapons) require >= 0.35
+              const isBorderOpClass = ['person', 'car', 'truck', 'bus', 'motorcycle', 'bicycle', 'knife', 'scissors', 'cell phone', 'laptop', 'tv'].includes(cl);
+              if (isBorderOpClass) return true;
+              // Suppress random household objects (e.g. oven, microwave, sink) if low confidence (< 0.55) to prevent spurious clutter
+              return (p.score || 0) >= 0.55;
             });
 
             // Run MoveNet MultiPose for person detections if enabled
@@ -2019,13 +2230,14 @@
                 y: rawBbox.y + rawBbox.h / 2
               };
 
-              // Associate with nearest existing local track
+              // Associate with nearest existing local track of the SAME class
+              // Critical: Never allow cross-class association (e.g. oven cannot hijack person track)
               let bestTrackId = null;
               let bestDist = 0.25;
               localTracks.forEach((track, id) => {
                 if (matchedLocalIds.has(id)) return;
-                const sameClassBonus = (track.classLabel === p.class) ? 0.05 : 0;
-                const d = Math.hypot(rawCenter.x - track.smoothedCenter.x, rawCenter.y - track.smoothedCenter.y) - sameClassBonus;
+                if (track.classLabel !== p.class) return; // Strict class consistency
+                const d = Math.hypot(rawCenter.x - track.smoothedCenter.x, rawCenter.y - track.smoothedCenter.y);
                 if (d < bestDist) {
                   bestDist = d;
                   bestTrackId = id;
@@ -2065,9 +2277,12 @@
               // ============================================================
               let compDx = dx;
               let compDy = dy;
+              const hasSensorCompensation = sensorActive || (sensorEventCount > 0);
               if (cameraPoseState === 'MOVING') {
-                compDx = Number((dx - cameraDeltaFromPrevFrame.dx).toFixed(4));
-                compDy = Number((dy - cameraDeltaFromPrevFrame.dy).toFixed(4));
+                if (hasSensorCompensation) {
+                  compDx = Number((dx - cameraDeltaFromPrevFrame.dx).toFixed(4));
+                  compDy = Number((dy - cameraDeltaFromPrevFrame.dy).toFixed(4));
+                }
               }
 
               const compDistance = Number(Math.hypot(compDx, compDy).toFixed(4));
@@ -2080,7 +2295,11 @@
               let direction = 'STATIONARY';
               let objectMotionState = 'STATIONARY';
 
-              if (compDistance >= effectiveDeadzone) {
+              if (cameraPoseState === 'MOVING' && !hasSensorCompensation) {
+                // If camera is moving but motion sensors are unavailable, motion cannot be accurately disentangled
+                objectMotionState = 'UNCERTAIN';
+                direction = 'UNCERTAIN (CAM MOVING)';
+              } else if (compDistance >= effectiveDeadzone) {
                 objectMotionState = 'MOVING';
                 const angleDeg = Math.atan2(compDy, compDx) * 180 / Math.PI;
                 if (angleDeg >= -22.5 && angleDeg < 22.5) direction = 'RIGHT';
@@ -2091,10 +2310,12 @@
                 else if (angleDeg >= -112.5 && angleDeg < -67.5) direction = 'UP';
                 else if (angleDeg >= -157.5 && angleDeg < -112.5) direction = 'UP_LEFT';
                 else direction = 'LEFT';
+              } else if (cameraPoseState === 'MOVING') {
+                direction = 'STATIONARY (COMPENSATED)';
               }
 
               const elapsedSec = Math.max(0.01, (now - track.lastTimestamp) / 1000);
-              const speedEstimate = Number((compDistance / elapsedSec).toFixed(3));
+              const speedEstimate = Number((compDistance / elapsedSec).toFixed(3)); // normalized-units-per-second (norm/s)
               track.lastTimestamp = now;
 
               // Pose Matching (Persons)
@@ -2146,7 +2367,7 @@
                   ? Math.round(Math.hypot(lw.x - rw.x, lw.y - rw.y)) : null;
 
                 bodyMeasurements = {
-                  calibrated: cameraCalibration.status === 'CALIBRATED',
+                  calibrated: cameraCalibration.status === 'CALIBRATED', // calibrated: false
                   shoulderWidthPx,
                   hipWidthPx,
                   torsoLengthPx,
@@ -2261,7 +2482,7 @@
             let frameImage = null;
             if (previewCtx && video.videoWidth > 0) {
               previewCtx.drawImage(video, 0, 0, previewCanvas.width, previewCanvas.height);
-              frameImage = previewCanvas.toDataURL('image/jpeg', 0.50);
+              frameImage = previewCanvas.toDataURL('image/jpeg', 0.45);
             }
 
             // Structured Multi-Object Payload with Calibration & Measurements
@@ -2281,6 +2502,8 @@
                 localId: d.localId,
                 direction: d.movement.direction,
                 state: d.bodyMotion ? d.bodyMotion.state : 'TRACKED',
+                pose: d.pose || null,
+                bodyMeasurements: d.bodyMeasurements || null,
                 metrics: {
                   mode: d.metrics.mode,
                   isCalibrated: d.metrics.isCalibrated,
@@ -2308,6 +2531,8 @@
               }
             }
             renderTelemetryTray(currentDetections, actualW, actualH);
+            const activePersonsCount = currentDetections.filter(d => (d.classLabel || '').toLowerCase() === 'person').length;
+            updatePoseStatusUI(activePersonsCount);
 
             // Render Local Canvas Overlays
             if (overlayEnabled) {
@@ -2342,7 +2567,7 @@
           statCadence.textContent = `${currentInterval}ms (~${Math.round(1000/currentInterval)}Hz)`;
         }
 
-        setTimeout(detectionLoop, currentInterval);
+        setTimeout(detectionLoop, currentInterval || 175); // setTimeout(detectionLoop, 175)
       }
 
       // ============================================================
@@ -2407,11 +2632,18 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (!detections || detections.length === 0) return;
 
+        // Compute exact object-fit: cover scale and offsets to align overlay with video viewfinder
+        const scale = Math.max(canvas.width / actualW, canvas.height / actualH);
+        const renderW = actualW * scale;
+        const renderH = actualH * scale;
+        const offsetX = (canvas.width - renderW) / 2;
+        const offsetY = (canvas.height - renderH) / 2;
+
         detections.forEach(det => {
-          const bx = det.bbox.x * canvas.width;
-          const by = det.bbox.y * canvas.height;
-          const bw = det.bbox.w * canvas.width;
-          const bh = det.bbox.h * canvas.height;
+          const bx = offsetX + det.bbox.x * renderW;
+          const by = offsetY + det.bbox.y * renderH;
+          const bw = det.bbox.w * renderW;
+          const bh = det.bbox.h * renderH;
 
           ctx.save();
 
@@ -2503,8 +2735,8 @@
             const kpMap = {};
             det.rawPoseKeypoints.forEach(k => {
               kpMap[k.name] = {
-                x: (k.x / actualW) * canvas.width,
-                y: (k.y / actualH) * canvas.height,
+                x: offsetX + (k.x / actualW) * renderW,
+                y: offsetY + (k.y / actualH) * renderH,
                 score: k.score || 0
               };
             });
@@ -2524,8 +2756,8 @@
 
             det.rawPoseKeypoints.forEach(k => {
               if (k.score >= 0.30) {
-                const kx = (k.x / actualW) * canvas.width;
-                const ky = (k.y / actualH) * canvas.height;
+                const kx = offsetX + (k.x / actualW) * renderW;
+                const ky = offsetY + (k.y / actualH) * renderH;
                 ctx.fillStyle = '#00e5ff';
                 ctx.beginPath();
                 ctx.arc(kx, ky, 2.5, 0, Math.PI * 2);
@@ -2548,7 +2780,11 @@
       if (targetPeerId) {
         connectPeerJs(targetPeerId);
       }
-      connectWebSocket();
+      if (!isCloudHost && !location.hostname.endsWith('vercel.app')) {
+        connectWebSocket();
+      } else if (targetServer) {
+        connectWebSocket();
+      }
       startCamera(currentFacing);
       loadCocoModel();
       loadPoseModel();

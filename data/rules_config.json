@@ -1,5 +1,6 @@
 {
   "curfew": {
+    "enabled": false,
     "start": "22:00",
     "end": "05:30"
   },

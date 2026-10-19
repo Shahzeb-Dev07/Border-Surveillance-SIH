@@ -183,11 +183,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function handleServerMessage(msg) {
     if (msg.type === 'INIT') {
+      pageLoadTimestamp = Date.now();
       cameras = msg.data.cameras || [];
       zonesMap = msg.data.zones || {};
       rulesConfig = msg.data.config || {};
       wanConnected = msg.data.wanConnected;
       events = msg.data.events || [];
+
+      // Initial page load: register existing events so none of them trigger audio alarms on load
+      events.forEach(e => {
+        if (e && e.event_id) {
+          handledAlarmEventIds.add(e.event_id);
+        }
+      });
+      activeSirenEventIds.clear();
+      window.tacticalAudio?.stopSiren();
+      isSirenActive = false;
+      if (alarmBanner) {
+        alarmBanner.classList.add('hidden');
+      }
+
       updateWanUI(wanConnected, msg.data.offlineQueueCount || 0);
       renderCameraList();
       renderAlerts();
@@ -195,7 +210,50 @@ document.addEventListener('DOMContentLoaded', () => {
       updateMobileCamModalStatus();
     } else if (msg.type === 'CAMERA_UPDATE') {
       const liveCams = msg.data.cameras || [];
+      const localMobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+      if (localMobileCam && localMobileCam.status === 'ONLINE' && localMobileCam.lastSeen && (Date.now() - localMobileCam.lastSeen < 4000)) {
+        const incomingMobileCam = liveCams.find(c => c.id === 'CAM-MOBILE-01');
+        if (incomingMobileCam) {
+          if (!incomingMobileCam.frameImage && localMobileCam.frameImage) {
+            incomingMobileCam.frameImage = localMobileCam.frameImage;
+          }
+          if (incomingMobileCam.status !== 'ONLINE') {
+            incomingMobileCam.status = 'ONLINE';
+          }
+          if ((!incomingMobileCam.activeDetections || incomingMobileCam.activeDetections.length === 0) && localMobileCam.activeDetections && localMobileCam.activeDetections.length > 0) {
+            incomingMobileCam.activeDetections = localMobileCam.activeDetections;
+          }
+        }
+      }
       cameras = liveCams;
+
+      // Ensure alarms for offline or disconnected cameras are resolved and don't remain stuck
+      let offlineResolutionOccurred = false;
+      liveCams.forEach(cam => {
+        if (cam.status === 'OFFLINE') {
+          events.forEach(e => {
+            if (e.camera_id === cam.id && e.system_status === 'ACTIVE') {
+              e.system_status = 'RESOLVED';
+              e.details = (e.details || '') + ' [RESOLVED: CAMERA_OFFLINE]';
+              activeSirenEventIds.delete(e.event_id);
+              offlineResolutionOccurred = true;
+            }
+          });
+        }
+      });
+      if (offlineResolutionOccurred) {
+        const hasActive = events.some(e => activeSirenEventIds.has(e.event_id) && isQualifyingSecurityAlarmEvent(e));
+        if (!hasActive && isSirenActive) {
+          window.tacticalAudio?.stopSiren();
+          isSirenActive = false;
+          if (alarmBanner && !alarmBanner.classList.contains('hidden')) {
+            alarmBanner.classList.add('hidden');
+          }
+          console.log('[AUDIO] SIREN STOP - Camera went offline, all active events resolved');
+        }
+        renderAlerts();
+      }
+
       updateActiveCamera();
       updateTelemetry(msg.data.telemetry);
       updateMobileCamModalStatus();
@@ -331,11 +389,81 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Point-in-polygon helper
+  function isPointInsidePolygon(pt, poly) {
+    if (!pt || !poly || poly.length < 3) return false;
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y;
+      const xj = poly[j].x, yj = poly[j].y;
+      const intersect = ((yi > pt.y) !== (yj > pt.y)) &&
+        (pt.x < ((xj - xi) * (pt.y - yi)) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+
   // --- ANTI-FLOODING ALERT IN-PLACE UPDATER & ALARM BUFFER ---
   let isSirenActive = false;
+  const handledAlarmEventIds = new Set();
+  const activeSirenEventIds = new Set();
+  let pageLoadTimestamp = Date.now();
+  const PAGE_LOAD_GRACE_MS = 3000;
+
+  // Validate event type, object class, configured rule, and event state before playing audio
+  function isQualifyingSecurityAlarmEvent(event) {
+    if (!event || event.system_status !== 'ACTIVE') return false;
+    if (event.operator_status === 'DISMISSED' || event.operator_status === 'FALSE_POSITIVE') return false;
+
+    // USER REQUIREMENT:
+    // ALARM ONLY START WHEN THE MOBILE CONNECT TO THE MOBILE , IF PERSON IS THE SCREEN
+    // 1. Only CAM-MOBILE-01 (or mock test feeds) can trigger audible alarm siren.
+    //    Simulated fixed CCTV cameras (CAM-01..04) must NEVER sound the audible alarm.
+    const isMobileCam = event.camera_id === 'CAM-MOBILE-01' || (event.camera_id && event.camera_id.startsWith('CAM-TEST'));
+    if (!isMobileCam) {
+      return false;
+    }
+
+    // 2. For CAM-MOBILE-01, verify the mobile camera is actively connected
+    if (event.camera_id === 'CAM-MOBILE-01') {
+      const mobileCam = (cameras || []).find(c => c.id === 'CAM-MOBILE-01');
+      const isMobileConnected = mobileCam && (mobileCam.status === 'ONLINE' || mobileCam.clientConnected === true);
+      if (!isMobileConnected) {
+        return false;
+      }
+    }
+
+    // 3. Object on screen must be a PERSON
+    const objectType = (event.object_type || '').toLowerCase();
+    const isPerson = objectType === 'person' || objectType === 'group_person';
+    if (!isPerson) {
+      return false;
+    }
+
+    // 4. Severity check (high or critical severity)
+    const severity = (event.severity || '').toUpperCase();
+    if (severity !== 'CRITICAL' && severity !== 'HIGH') {
+      return false;
+    }
+
+    // 5. Permitted intrusion types
+    const eventType = (event.event_type || '').toUpperCase();
+    const intrusionEventTypes = [
+      'VIRTUAL_FENCE_BREACH',
+      'GROUP_INTRUSION',
+      'DWELL_VIOLATION',
+      'TRIPWIRE_BREACH',
+      'CURFEW_BREACH'
+    ];
+    if (!intrusionEventTypes.includes(eventType)) {
+      return false;
+    }
+
+    return true;
+  }
 
   function handleIncomingAlerts(incoming) {
-    let newCriticalCameraName = '';
+    let newlyTriggeredQualifyingEvent = null;
 
     // 1. Merge incoming events into local state
     incoming.forEach(incEvt => {
@@ -346,47 +474,61 @@ document.addEventListener('DOMContentLoaded', () => {
       } else {
         // Prepend new event
         events.unshift(incEvt);
-        // Fire alert ping exactly once per new critical/high event
-        if ((incEvt.severity === 'CRITICAL' || incEvt.severity === 'HIGH') && incEvt.system_status === 'ACTIVE') {
-          window.tacticalAudio.playAlertPing('CRITICAL');
-          newCriticalCameraName = incEvt.camera_name || incEvt.camera_id;
+      }
+
+      // Check if this incoming event is a valid, newly triggered security event
+      if (isQualifyingSecurityAlarmEvent(incEvt)) {
+        if (!handledAlarmEventIds.has(incEvt.event_id)) {
+          handledAlarmEventIds.add(incEvt.event_id);
+          activeSirenEventIds.add(incEvt.event_id);
+          newlyTriggeredQualifyingEvent = incEvt;
         }
+      } else {
+        // Event has resolved, been dismissed, or is not an active qualifying event
+        activeSirenEventIds.delete(incEvt.event_id);
       }
     });
 
-    // 2. Derive alarm state from the FULL current events array (not just incoming batch)
-    const qualifying = events.filter(e =>
-      e.system_status === 'ACTIVE' &&
-      (e.severity === 'CRITICAL' || e.severity === 'HIGH')
-    );
+    // 2. Alarm Triggering & State Management
+    if (newlyTriggeredQualifyingEvent) {
+      // Check page-load grace period (alarm must NEVER play automatically on page load)
+      const isInitialPageLoadGrace = (Date.now() - pageLoadTimestamp) < PAGE_LOAD_GRACE_MS;
+      if (isInitialPageLoadGrace) {
+        console.log(`[AUDIO] Suppressed alarm on page load initialization for incident ${newlyTriggeredQualifyingEvent.event_id}`);
+      } else {
+        // Valid new security intrusion event detected: trigger alarm!
+        window.tacticalAudio?.playAlertPing('CRITICAL');
+        window.tacticalAudio?.startSiren();
+        isSirenActive = true;
+        console.log(`[AUDIO] SIREN START for incident ${newlyTriggeredQualifyingEvent.event_id}`);
 
-    if (qualifying.length > 0 && !isSirenActive) {
-      // Transition: no alarm -> alarm
-      window.tacticalAudio.startSiren();
-      isSirenActive = true;
-      console.log('[AUDIO] SIREN START');
-      const displayName = newCriticalCameraName || qualifying[0].camera_name || qualifying[0].camera_id;
-      if (alarmBanner) {
-        alarmBanner.classList.remove('hidden');
-        document.getElementById('alarmSirenText').textContent = `CRITICAL PERIMETER BREACH DETECTED AT ${displayName.toUpperCase()}!`;
+        const displayName = newlyTriggeredQualifyingEvent.camera_name || newlyTriggeredQualifyingEvent.camera_id;
+        if (alarmBanner) {
+          alarmBanner.classList.remove('hidden');
+          const sirenText = document.getElementById('alarmSirenText');
+          if (sirenText) {
+            sirenText.textContent = `CRITICAL PERIMETER BREACH DETECTED AT ${displayName.toUpperCase()}!`;
+          }
+        }
       }
-    } else if (qualifying.length > 0 && isSirenActive) {
-      // Alarm continues — update banner text if needed, but don't restart siren
-      if (alarmBanner && alarmBanner.classList.contains('hidden')) {
-        alarmBanner.classList.remove('hidden');
-      }
-    } else if (qualifying.length === 0 && isSirenActive) {
-      // Transition: alarm -> no alarm (all incidents resolved)
-      window.tacticalAudio.stopSiren();
-      isSirenActive = false;
-      console.log('[AUDIO] SIREN STOP');
-      if (alarmBanner) {
-        alarmBanner.classList.add('hidden');
-      }
-    } else if (qualifying.length === 0 && !isSirenActive) {
-      // No alarm, no qualifying events — ensure banner is hidden
-      if (alarmBanner && !alarmBanner.classList.contains('hidden')) {
-        alarmBanner.classList.add('hidden');
+    } else {
+      // Check if any active qualifying events remain for currently alarming events
+      const hasActiveQualifying = events.some(e =>
+        (activeSirenEventIds.size === 0 ? false : activeSirenEventIds.has(e.event_id)) &&
+        isQualifyingSecurityAlarmEvent(e)
+      );
+
+      if (!hasActiveQualifying) {
+        // All qualifying events have been resolved or dismissed
+        activeSirenEventIds.clear();
+        if (isSirenActive) {
+          window.tacticalAudio?.stopSiren();
+          isSirenActive = false;
+          console.log('[AUDIO] SIREN STOP - all qualifying events resolved');
+        }
+        if (alarmBanner && !alarmBanner.classList.contains('hidden')) {
+          alarmBanner.classList.add('hidden');
+        }
       }
     }
 
@@ -743,6 +885,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const veh = rulesConfig.vehicle || {};
     const alt = rulesConfig.alert || {};
 
+    const curfewEnabledEl = document.getElementById('inputCurfewEnabled');
+    if (curfewEnabledEl) curfewEnabledEl.checked = !!c.enabled;
     document.getElementById('inputCurfewStart').value = c.start || '22:00';
     document.getElementById('inputCurfewEnd').value = c.end || '05:30';
     document.getElementById('inputDwell').value = intr.dwell_time || rulesConfig.dwellThresholdSec || 5;
@@ -765,6 +909,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const updated = {
       curfew: {
+        enabled: document.getElementById('inputCurfewEnabled') ? document.getElementById('inputCurfewEnabled').checked : false,
         start: document.getElementById('inputCurfewStart').value,
         end: document.getElementById('inputCurfewEnd').value
       },
@@ -868,15 +1013,35 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Tactical Audio Alarm & Siren Controls
+  if (window.tacticalAudio) {
+    window.tacticalAudio.onSirenEnded = () => {
+      isSirenActive = false;
+      activeSirenEventIds.clear();
+      alarmBanner?.classList.add('hidden');
+    };
+  }
+
   btnMute?.addEventListener('click', () => {
-    const isMuted = window.tacticalAudio.toggleMute();
+    const isMuted = window.tacticalAudio?.toggleMute();
+    if (isMuted) {
+      isSirenActive = false;
+      activeSirenEventIds.clear();
+      alarmBanner?.classList.add('hidden');
+    }
     btnMute.textContent = isMuted ? 'UNMUTE AUDIO' : 'MUTE AUDIO';
     btnMute.style.color = isMuted ? 'var(--accent-red)' : '';
   });
 
   btnDismissSiren?.addEventListener('click', () => {
-    window.tacticalAudio.stopSiren();
+    window.tacticalAudio?.stopSiren();
+    isSirenActive = false;
+    activeSirenEventIds.clear();
     alarmBanner?.classList.add('hidden');
+  });
+
+  // Unlock Web Audio context on user interaction
+  ['click', 'keydown', 'touchstart'].forEach(evt => {
+    window.addEventListener(evt, () => window.tacticalAudio?.unlock(), { once: true });
   });
 
   // -------------------------------------------------------------
@@ -899,7 +1064,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // PeerJS WebRTC & BroadcastChannel Uplink for Mobile Camera
   let peer = null;
-  let peerId = 'ibvap-' + Math.random().toString(36).substring(2, 8);
+  let peerId = 'ibvap-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7);
+  let cachedLanIp = '';
   const mobileCamBc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('ibvap_mobile_cam') : null;
 
   if (mobileCamBc) {
@@ -908,32 +1074,103 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
+  let cloudMobileIncident = null;
+  let cloudMobileClearTimer = null;
+
   function initPeer() {
     if (typeof Peer === 'undefined') return;
     try {
-      peer = new Peer(peerId);
+      if (peer && !peer.destroyed) {
+        try { peer.destroy(); } catch (e) {}
+      }
+      peer = new Peer(peerId, {
+        host: '0.peerjs.com',
+        port: 443,
+        path: '/',
+        secure: true,
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            {
+              urls: [
+                'turn:openrelay.metered.ca:80',
+                'turn:openrelay.metered.ca:443',
+                'turn:openrelay.metered.ca:443?transport=tcp'
+              ],
+              username: 'openrelay',
+              credential: 'openrelay'
+            }
+          ]
+        }
+      });
       peer.on('open', (id) => {
         console.log('[PEER] C2 Console PeerJS initialized with ID:', id);
         peerId = id;
+        if (mobileCamDialog && mobileCamDialog.open) {
+          const url = computeMobileCamUrl(inputCustomServerIp?.value);
+          renderMobileCamQr(url);
+        }
       });
       peer.on('connection', (conn) => {
         console.log('[PEER] Mobile phone camera connected via WebRTC PeerJS!');
+        const onOpen = () => {
+          console.log('[PEER] Data channel open with mobile client, awaiting live telemetry/media frames');
+          const mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+          if (mobileCam) {
+            if (mobileCam.status !== 'ONLINE') {
+              mobileCam.status = 'CONNECTING';
+            }
+            mobileCam.lastSeen = Date.now();
+            switchCamera('CAM-MOBILE-01');
+            renderCameraList();
+            updateActiveCamera();
+            updateMobileCamModalStatus();
+          }
+        };
+        if (conn.open) {
+          onOpen();
+        } else {
+          conn.on('open', onOpen);
+        }
         conn.on('data', (data) => {
           handleMobileCamTelemetry(data);
         });
         conn.on('close', () => {
           console.log('[PEER] Mobile camera peer connection closed');
           const mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
-          if (mobileCam && mobileCam.status === 'ONLINE') {
+          if (mobileCam) {
             mobileCam.status = 'WAITING';
             renderCameraList();
             updateActiveCamera();
             updateMobileCamModalStatus();
           }
+          if (typeof cloudMobileIncident !== 'undefined' && cloudMobileIncident && cloudMobileIncident.system_status === 'ACTIVE') {
+            cloudMobileIncident.system_status = 'RESOLVED';
+            cloudMobileIncident.details = (cloudMobileIncident.details || '') + ' [RESOLVED: CAMERA_OFFLINE]';
+            handleIncomingAlerts([Object.assign({}, cloudMobileIncident)]);
+            cloudMobileIncident = null;
+          }
+          cloudMobileConfirmFrames = 0;
         });
+        conn.on('error', (err) => {
+          console.warn('[PEER] Peer connection error:', err);
+        });
+      });
+      peer.on('disconnected', () => {
+        console.warn('[PEER] Disconnected from signaling server, attempting reconnect...');
+        try { peer.reconnect(); } catch (e) {}
       });
       peer.on('error', (err) => {
         console.warn('[PEER] Peer error:', err.type || err);
+        if (err.type === 'unavailable-id') {
+          peerId = 'ibvap-' + Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 7);
+          setTimeout(initPeer, 1500);
+        } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
+          setTimeout(initPeer, 4000);
+        }
       });
     } catch (e) {
       console.warn('[PEER] Peer initialization skipped:', e);
@@ -941,7 +1178,21 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function handleMobileCamTelemetry(data) {
-    if (!data || !data.type) return;
+    if (!data) return;
+    if (typeof data === 'string') {
+      try { data = JSON.parse(data); } catch (e) { return; }
+    }
+    if (!data.type) return;
+
+    // Bridge incoming mobile payload to backend server if connected
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try {
+        ws.send(JSON.stringify(data));
+      } catch (e) {
+        console.warn('[WS] Failed to forward mobile data to server:', e);
+      }
+    }
+
     let mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
     if (!mobileCam) {
       mobileCam = {
@@ -962,6 +1213,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mobileCam.status = 'ONLINE';
       mobileCam.lastSeen = Date.now();
       window.tacticalAudio?.playAlertPing('INFO');
+      switchCamera('CAM-MOBILE-01');
       renderCameraList();
       updateActiveCamera();
       updateMobileCamModalStatus();
@@ -977,14 +1229,117 @@ document.addEventListener('DOMContentLoaded', () => {
         mobileCam.frameImage = data.frameImage;
       }
       const detections = data.detections || [];
-      const persons = detections.filter(d => d.classLabel === 'person').length;
+      const persons = detections.filter(d => (d.classLabel || d.class || '').toLowerCase() === 'person');
+      const personCount = persons.length;
       const highestConf = detections.reduce((max, d) => Math.max(max, d.confidence || 0), 0);
       mobileCam.meta = {
-        detectedPersons: persons,
+        detectedPersons: personCount,
         totalObjects: detections.length,
         confidencePct: Math.round(highestConf * 100),
         lastReceivedAt: Date.now()
       };
+
+      if (activeCameraId !== 'CAM-MOBILE-01' && detections.length > 0 && (!mobileCam._autoSwitched)) {
+        mobileCam._autoSwitched = true;
+        switchCamera('CAM-MOBILE-01');
+      }
+
+      // Cloud mode fallback alert engine: If running standalone in cloud without backend WS server,
+      // evaluate person detections against C2 perimeter rules to trigger tactical alert and siren
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        const now = Date.now();
+        const mobileZones = (zonesMap['CAM-MOBILE-01'] || []).filter(z => z.enabled && z.rule === 'VIRTUAL_FENCE');
+
+        // Check for co-detected screen/display devices (presentation attack / spoof check)
+        const hasScreenDevice = detections.some(d => {
+          const l = (d.classLabel || d.class || '').toLowerCase();
+          return ['cell phone', 'phone', 'laptop', 'tv', 'screen', 'remote'].includes(l);
+        });
+
+        // Require: 1) Explicitly configured restricted zone, 2) No screen device spoof, 3) Bottom-center ground contact, 4) 3-frame confirmation
+        let breachingPerson = null;
+        if (mobileZones.length > 0 && !hasScreenDevice) {
+          for (const p of persons) {
+            if (!p.bbox) continue;
+            // Use person's bottom-center bounding-box point as ground-contact approximation
+            const groundPoint = {
+              x: p.bbox.x + p.bbox.w / 2,
+              y: p.bbox.y + p.bbox.h
+            };
+            const inside = mobileZones.some(z => isPointInsidePolygon(groundPoint, z.points));
+            if (inside) {
+              cloudMobileConfirmFrames = (cloudMobileConfirmFrames || 0) + 1;
+              if (cloudMobileConfirmFrames >= 3) {
+                breachingPerson = p;
+                break;
+              } else {
+                console.log(`[ZONE] Target inside zone: confirming frame ${cloudMobileConfirmFrames}/3 (reason=ZONE_INTRUSION_NOT_CONFIRMED)`);
+              }
+            } else {
+              cloudMobileConfirmFrames = Math.max(0, (cloudMobileConfirmFrames || 0) - 1);
+            }
+          }
+        } else {
+          cloudMobileConfirmFrames = 0;
+          if (hasScreenDevice) {
+            console.log('[SECURITY] Mobile detection rejected: SCREEN_PRESENTATION_ATTACK_DETECTED');
+          }
+        }
+
+        if (breachingPerson) {
+          if (cloudMobileClearTimer) {
+            clearTimeout(cloudMobileClearTimer);
+            cloudMobileClearTimer = null;
+          }
+          const person = breachingPerson;
+          const conf = person.confidence || highestConf || 0.88;
+          if (!cloudMobileIncident) {
+            const eventId = `EVT-MOBILE-${Date.now()}`;
+            const ts = new Date(now).toISOString();
+            cloudMobileIncident = {
+              event_id: eventId,
+              camera_id: 'CAM-MOBILE-01',
+              camera_name: mobileCam.name,
+              location: mobileCam.location,
+              timestamp: ts,
+              started_at: ts,
+              last_active_at: ts,
+              duration_sec: 1,
+              event_type: 'VIRTUAL_FENCE_BREACH',
+              rule_name: 'Mobile Recon Intrusion Rule',
+              object_type: 'PERSON',
+              track_id: person.localId ? `MOB-TRK-${person.localId}` : `MOB-TRK-1`,
+              confidence: conf,
+              severity: 'CRITICAL',
+              details: `Tactical mobile camera detected ${personCount} person(s) approaching perimeter`,
+              zone_id: 'mobile-patrol-zone',
+              zone_name: 'Mobile QRT Patrol Sector',
+              snapshot_uri: data.frameImage || null,
+              operator_status: 'UNACKNOWLEDGED',
+              system_status: 'ACTIVE'
+            };
+          } else {
+            const elapsed = Math.max(1, Math.round((now - new Date(cloudMobileIncident.started_at).getTime()) / 1000));
+            cloudMobileIncident.duration_sec = elapsed;
+            cloudMobileIncident.last_active_at = new Date(now).toISOString();
+            cloudMobileIncident.confidence = Math.max(cloudMobileIncident.confidence, conf);
+            cloudMobileIncident.system_status = 'ACTIVE';
+            if (data.frameImage) cloudMobileIncident.snapshot_uri = data.frameImage;
+          }
+          handleIncomingAlerts([Object.assign({}, cloudMobileIncident)]);
+        } else if (cloudMobileIncident && cloudMobileIncident.system_status === 'ACTIVE') {
+          if (!cloudMobileClearTimer) {
+            cloudMobileClearTimer = setTimeout(() => {
+              if (cloudMobileIncident && cloudMobileIncident.system_status === 'ACTIVE') {
+                cloudMobileIncident.system_status = 'RESOLVED';
+                handleIncomingAlerts([Object.assign({}, cloudMobileIncident)]);
+                cloudMobileIncident = null;
+              }
+              cloudMobileClearTimer = null;
+            }, 3500);
+          }
+        }
+      }
 
       updateActiveCamera();
       renderCameraList();
@@ -998,21 +1353,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const isPublicCloud = window.location.protocol === 'https:' &&
       !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
 
+    const peerQuery = peerId ? `peer=${peerId}` : '';
+
     if (customHost && customHost.trim()) {
       const trimmed = customHost.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-      const port = trimmed.includes(':') ? '' : ':3443';
-      const peerQuery = peerId ? `?peer=${peerId}` : '';
-      return `https://${trimmed}${port}/mobile-cam.html${peerQuery}`;
+      const port = trimmed.includes(':') ? '' : (isPublicCloud ? '' : ':3443');
+      const serverHost = port ? `${trimmed}${port}` : trimmed;
+      const serverQuery = `server=${encodeURIComponent(serverHost)}`;
+      const query = [peerQuery, serverQuery].filter(Boolean).join('&');
+      // If deployed in cloud (e.g. Vercel), serve mobile-cam.html from current cloud origin,
+      // and provide customHost as the WebSocket telemetry server target.
+      const baseUrl = isPublicCloud ? `${window.location.origin}/mobile-cam.html` : `https://${serverHost}/mobile-cam.html`;
+      return `${baseUrl}${query ? '?' + query : ''}`;
     }
 
     if (isPublicCloud) {
-      const peerQuery = peerId ? `?peer=${peerId}` : '';
-      return `${window.location.origin}/mobile-cam.html${peerQuery}`;
+      return `${window.location.origin}/mobile-cam.html${peerQuery ? '?' + peerQuery : ''}`;
     }
 
-    const host = window.location.hostname || 'localhost';
-    const peerQuery = peerId ? `?peer=${peerId}` : '';
-    return `https://${host}:3443/mobile-cam.html${peerQuery}`;
+    // Local Wi-Fi / Edge mode: ALWAYS resolve to the real LAN IP so the phone never receives localhost
+    let host = (cachedLanIp && cachedLanIp.trim()) ? cachedLanIp.trim() : window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || !host) {
+      if (cachedLanIp) host = cachedLanIp;
+    }
+    const serverQuery = `server=${encodeURIComponent(host + ':3443')}`;
+    const query = [peerQuery, serverQuery].filter(Boolean).join('&');
+    return `https://${host}:3443/mobile-cam.html${query ? '?' + query : ''}`;
   }
 
   function renderMobileCamQr(url) {
@@ -1039,6 +1405,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Open modal in-place without navigating away from the dashboard tab
   btnOpenMobileCamModal?.addEventListener('click', async () => {
+    if (!peer || peer.destroyed || peer.disconnected) {
+      initPeer();
+    }
     const isPublicCloud = window.location.protocol === 'https:' &&
       !window.location.hostname.match(/^(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/);
 
@@ -1059,16 +1428,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
-      if (modalLanIp) modalLanIp.textContent = 'Detecting LAN IP...';
+      if (modalLanIp) modalLanIp.textContent = cachedLanIp || 'Detecting LAN IP...';
       if (modalMobileUrl) modalMobileUrl.textContent = 'Loading endpoint...';
 
       const res = await fetch('/api/mobile-cam-info');
       const info = await res.json();
 
-      const host = info.lanIp || window.location.hostname;
+      if (info.lanIp) {
+        cachedLanIp = info.lanIp;
+      }
+      const host = cachedLanIp || window.location.hostname;
       if (modalLanIp) modalLanIp.textContent = host;
 
-      const url = info.mobileUrl ? `${info.mobileUrl}.html?peer=${peerId}` : computeMobileCamUrl(inputCustomServerIp?.value);
+      const url = computeMobileCamUrl(inputCustomServerIp?.value);
       renderMobileCamQr(url);
 
       if (info.httpsAvailable) {
@@ -1082,7 +1454,7 @@ document.addEventListener('DOMContentLoaded', () => {
       mobileCamDialog?.showModal();
     } catch (err) {
       console.warn('[MOBILE-CAM] Could not fetch local endpoint info, using fallback:', err.message);
-      if (modalLanIp) modalLanIp.textContent = window.location.hostname;
+      if (modalLanIp) modalLanIp.textContent = cachedLanIp || window.location.hostname;
       const url = computeMobileCamUrl(inputCustomServerIp?.value);
       renderMobileCamQr(url);
       if (mobileCamHttpsWarning) mobileCamHttpsWarning.style.display = 'none';
@@ -1193,6 +1565,19 @@ document.addEventListener('DOMContentLoaded', () => {
       elPhone.style.color = 'var(--accent-green)';
       elWs.textContent = 'CONNECTED';
       elWs.style.color = 'var(--accent-green)';
+    } else if (status === 'CONNECTING') {
+      if (dot) {
+        dot.className = 'dot amber';
+        dot.style.background = '';
+      }
+      if (stateText) {
+        stateText.textContent = 'CONNECTING';
+        stateText.style.color = 'var(--accent-cyan)';
+      }
+      elPhone.textContent = 'DATA CHANNEL OPEN';
+      elPhone.style.color = 'var(--accent-cyan)';
+      elWs.textContent = 'AWAITING FRAMES';
+      elWs.style.color = 'var(--accent-cyan)';
     } else if (status === 'STALE') {
       if (dot) {
         dot.className = 'dot amber';
@@ -1279,6 +1664,45 @@ document.addEventListener('DOMContentLoaded', () => {
   updateActiveCamera();
   initPeer();
 
+  // Background discover LAN endpoint for QR code generation
+  fetch('/api/mobile-cam-info')
+    .then(res => res.json())
+    .then(info => {
+      if (info && info.lanIp) {
+        cachedLanIp = info.lanIp;
+        if (modalLanIp && (!modalLanIp.textContent || modalLanIp.textContent === 'Loading...' || modalLanIp.textContent === 'Detecting LAN IP...')) {
+          modalLanIp.textContent = cachedLanIp;
+        }
+        if (mobileCamDialog && mobileCamDialog.open) {
+          const url = computeMobileCamUrl(inputCustomServerIp?.value);
+          renderMobileCamQr(url);
+        }
+      }
+    })
+    .catch(err => {
+      console.warn('[MOBILE-CAM] Background LAN discovery fallback:', err.message);
+    });
+
   // Connect WebSocket
   connectWs();
+
+  // Watchdog for CAM-MOBILE-01 (handles cloud-mode transitions: ONLINE -> STALE -> OFFLINE)
+  setInterval(() => {
+    const mobileCam = cameras.find(c => c.id === 'CAM-MOBILE-01');
+    if (!mobileCam || !mobileCam.lastSeen) return;
+    const elapsed = Date.now() - mobileCam.lastSeen;
+    let changed = false;
+    if (mobileCam.status === 'ONLINE' && elapsed > 3500) {
+      mobileCam.status = 'STALE';
+      changed = true;
+    } else if (mobileCam.status === 'STALE' && elapsed > 15000) {
+      mobileCam.status = 'OFFLINE';
+      changed = true;
+    }
+    if (changed) {
+      renderCameraList();
+      updateActiveCamera();
+      updateMobileCamModalStatus();
+    }
+  }, 1000);
 });
